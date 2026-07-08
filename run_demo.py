@@ -18,6 +18,8 @@ def main() -> None:
     activity_counts = summary["activity_category_counts"]
 
     print("SEZ Calibration Demo Summary")
+    print(f"Data profile: {summary.get('data_profile', 'source')}")
+    print(f"Synthetic demo data used: {summary.get('synthetic_demo_data_used', False)}")
     print(f"Zones loaded: {summary['zone_records_loaded']}")
     print(f"Demo data used: {summary['demo_data_used']}")
     print(f"Placeholders created: {summary['placeholders_created']}")

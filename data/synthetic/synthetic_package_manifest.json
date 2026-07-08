@@ -1,0 +1,21 @@
+{
+  "created_at_utc": "2026-07-08T18:59:53.935328+00:00",
+  "purpose": "Fully synthetic demo data for SEZ incentive transition triage MVP",
+  "zone_count": 14,
+  "files": [
+    "SEZ_Key_Indicators_Normalized.csv",
+    "legal_fiscal_placeholders.csv",
+    "synthetic_enterprise_summary.csv",
+    "synthetic_data_dictionary.csv",
+    "README_synthetic_demo_data.md",
+    "synthetic_package_manifest.json",
+    "synthetic_expected_engine_outputs.csv"
+  ],
+  "drop_in_files": [
+    "SEZ_Key_Indicators_Normalized.csv",
+    "legal_fiscal_placeholders.csv"
+  ],
+  "non_decision_statement": "Synthetic demonstration only; not legal, fiscal, tax, or incentive advice.",
+  "expected_output_file": "synthetic_expected_engine_outputs.csv",
+  "preview_workbook": "synthetic_sez_demo_outputs_preview.xlsx"
+}

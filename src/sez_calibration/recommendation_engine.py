@@ -807,7 +807,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_minimum_confidence_band",
-                "Scenario Settings require a higher confidence band before pilot-review screening.",
+                "Internal assumption gate requires a higher confidence band before pilot-review screening.",
                 ["R08", "R17"],
                 "BOI / REMIT",
             )
@@ -819,7 +819,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_legal_low_risk_required",
-                "Scenario Settings require low legal risk before pilot-review screening.",
+                "Internal assumption gate requires low legal risk before pilot-review screening.",
                 ["R14", "R17"],
                 "Legal team / BOI",
             )
@@ -830,7 +830,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_fiscal_data_required",
-                "Scenario Settings require D5 fiscal validation before pilot-review screening.",
+                "Internal assumption gate requires D5 fiscal validation before pilot-review screening.",
                 ["R09", "R13", "R17"],
                 "FBR / Finance / D5 team",
             )
@@ -839,7 +839,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_construction_excluded",
-                "Scenario Settings exclude construction-stage transition candidates.",
+                "Internal assumption gate excludes construction-stage transition candidates.",
                 ["R05", "R17"],
                 "BOI / REMIT",
             )
@@ -850,7 +850,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_unknown_developer_compliance_blocker",
-                "Scenario Settings treat not-yet-validated developer compliance as a blocker.",
+                "Internal assumption gate treats not-yet-validated developer compliance as a blocker.",
                 ["R03", "R17", "R21"],
                 "SEZA / BOI",
             )

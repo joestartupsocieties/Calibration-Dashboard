@@ -178,6 +178,22 @@ def test_every_recommendation_has_next_actions_and_human_review() -> None:
     assert result["validator_owner"]
 
 
+def test_recommendation_outputs_keep_required_fields() -> None:
+    result = rec()
+    required_fields = [
+        "provisional_treatment",
+        "reason_codes",
+        "open_validation_gates",
+        "validator_owner",
+        "next_actions",
+        "human_review_status",
+    ]
+    for field in required_fields:
+        assert field in result.index
+        assert str(result[field]).strip()
+    assert result["human_review_status"] == "Required"
+
+
 def test_low_legal_risk_setting_blocks_non_low_pilot_candidate() -> None:
     result = rec(
         band="high",

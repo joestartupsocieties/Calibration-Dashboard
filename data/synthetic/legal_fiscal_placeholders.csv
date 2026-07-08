@@ -1,0 +1,15 @@
+zone_id,zone_name,legal_risk_level,developer_compliance_status,enterprise_compliance_status,legal_review_required,fiscal_exposure_level,fiscal_data_status,notes
+SYN-001,Indus Productivity SEZ,low,compliant,compliant,False,medium,validated,D4/D5 complete enough for limited cost-based review; still human review required.
+SYN-002,Margalla Precision SEZ,low,compliant,compliant,False,low,verified,Low legal and fiscal exposure; limited support review only.
+SYN-003,Horizon Assembly SEZ,low,compliant,compliant,False,medium,preliminary,Fiscal file preliminary; additionality comparator required before treatment use.
+SYN-004,Kirana Legal Exposure SEZ,high,compliant,compliant,True,medium,validated,High legal risk: stabilization/dispute issue blocks treatment classification.
+SYN-005,Makran Duty Exposure SEZ,low,compliant,partial,False,high,validated,High fiscal exposure and low additionality; avoid fiscal support.
+SYN-006,Thar Transition SEZ,medium,compliant,partial,False,medium,preliminary,Construction-stage transition obligations mapped; grandfathering timing needs final confirmation.
+SYN-007,Bolan Utility Constraint SEZ,low,partial,partial,False,low,preliminary,Utility obligations unresolved; non-fiscal/infrastructure considerations dominate.
+SYN-008,Karak Idle Allotment SEZ,low,partial,partial,False,low,verified,Inactive allotment issue; regularization/cancellation decision needed but not treated as automatic non-compliance in demo.
+SYN-009,Salt Range Vacant SEZ,low,partial,partial,False,low,verified,Vacant/speculative use; phase-out/no new support pathway unless legal review indicates otherwise.
+SYN-010,Ravi Non-Compliant SEZ,medium,non_compliant,partial,False,medium,validated,Developer milestone breach flagged; sanction/withdrawal review pathway.
+SYN-011,Sulaiman Data Gap SEZ,unknown,unknown,unknown,True,unknown,missing,Intentionally incomplete data-gap case.
+SYN-012,Sukkur Fiscal Verification SEZ,low,compliant,compliant,False,unknown,missing,FBR/customs utilization file missing; D5 fiscal verification required.
+SYN-013,Karachi Export Corridor EPZ,low,compliant,compliant,False,low,validated,EPZ comparator case; domestic sale restriction assumed in demo.
+SYN-014,Gilgit Greenfield SEZ,unknown,partial,unknown,True,low,preliminary,Early-stage scope/legal status needs confirmation.

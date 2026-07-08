@@ -39,7 +39,8 @@ def run_pipeline(
     output_dir = ensure_dir(root / "outputs")
 
     zones, ingest_metadata = load_zone_data_with_metadata(data_dir)
-    legal, fiscal, placeholder_metadata = ensure_placeholder_tables_with_metadata(zones, data_dir)
+    profile_data_dir = Path(str(ingest_metadata.get("data_profile_dir", data_dir)))
+    legal, fiscal, placeholder_metadata = ensure_placeholder_tables_with_metadata(zones, profile_data_dir)
     issues, contradictions, field_completeness = run_data_quality_checks(zones)
     consistency_inputs = pd.concat([issues, contradictions], ignore_index=True)
     confidence = calculate_confidence_scores(zones, consistency_inputs)
@@ -51,6 +52,22 @@ def run_pipeline(
     summary = build_summary(zones, issues, contradictions, confidence, activity, recommendations)
     summary.update(ingest_metadata)
     summary.update(placeholder_metadata)
+    if summary.get("data_profile") == "synthetic":
+        summary["title"] = "SEZ Incentive Transition Triage"
+        summary["dataset_scope_note"] = (
+            "Default public/MVP demo uses fully synthetic hypothetical-zone records. Real policy use requires "
+            "validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, "
+            "KPI validation, and additionality/counterfactual analysis."
+        )
+        summary["detected_zone_profile_records_from_source_digest"] = int(len(zones))
+        summary["normalized_indicator_records_from_source_digest"] = int(len(zones))
+        summary["limitations"] = [
+            "Default public/MVP demo uses fully synthetic hypothetical-zone records.",
+            "Outputs are provisional screening outputs for human review.",
+            "Outputs do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, or legal counsel review.",
+            "Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis.",
+            "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
+        ]
 
     frames = {
         "zones": zones,
@@ -148,23 +165,7 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
     ensure_dir(path.parent)
     summary_df = pd.DataFrame([{"metric": key, "value": _summary_value(value)} for key, value in summary.items()])
     reason_df = pd.DataFrame([{"reason_code": key, "reason_text": value} for key, value in reason_codes.items()])
-    limitations_df = pd.DataFrame(
-        {
-            "limitation": [
-                "Legal fields are placeholders pending D4 legal review.",
-                "Fiscal exposure fields are placeholders pending D5/FBR/customs verification.",
-                "Enterprise and plot-level data are not yet fully loaded.",
-                "The structured screening dataset covers 35 detected zone profile records and 35 structured indicator records based on the source digest.",
-                "The current structured screening dataset is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
-                "Exact row-level verification should use the original workbook.",
-                "Recommendations are provisional and for demonstration only.",
-                "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
-                "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
-                "No tax rates or incentive awards are calculated.",
-                "Human review is mandatory.",
-            ]
-        }
-    )
+    limitations_df = pd.DataFrame({"limitation": summary.get("limitations", [])})
 
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         summary_df.to_excel(writer, sheet_name="00_summary", index=False)

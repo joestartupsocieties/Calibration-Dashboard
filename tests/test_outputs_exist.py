@@ -20,8 +20,9 @@ def test_run_demo_creates_required_outputs(tmp_path: Path) -> None:
     assert summary["demo_data_used"] is True
     assert summary["demo_data_created"] is True
     assert summary["placeholders_created"] is True
+    assert summary["data_profile"] == "synthetic"
     assert summary["zone_records_loaded"] >= 8
-    assert (tmp_path / "data" / "legal_fiscal_placeholders.csv").read_text(encoding="utf-8").splitlines()[0] == (
+    assert (tmp_path / "data" / "synthetic" / "legal_fiscal_placeholders.csv").read_text(encoding="utf-8").splitlines()[0] == (
         "zone_id,zone_name,legal_risk_level,developer_compliance_status,enterprise_compliance_status,"
         "legal_review_required,fiscal_exposure_level,fiscal_data_status,notes"
     )

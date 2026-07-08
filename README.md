@@ -1,8 +1,8 @@
-# SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype
+# SEZ Incentive Transition Triage
 
-Decision-support prototype for SEZ fiscal exposure, legal/compliance triage, calibration logic, and pilot screening.
+Provisional decision-support for legal, fiscal, data-confidence, and pilot-readiness review.
 
-This repository is scoped to a demoable screening flow. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, and does not replace BOI, FBR, Finance, SEZA, legal, IMF, programme, or human review.
+This repository is scoped to a demoable screening flow using fully synthetic hypothetical-zone records by default. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
 
 ## Demo Flow
 
@@ -15,7 +15,7 @@ Hard guardrails:
 - Human review is required.
 - Any support-related output remains subject to D4 legal review and D5/FBR fiscal verification.
 - Any cost-based support is temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.
-- The current source package is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.
+- The default public/MVP demo uses fully synthetic hypothetical zones and must remain synthetic unless an authorized internal user explicitly switches profiles.
 
 ## How To Run
 
@@ -37,15 +37,34 @@ Run the Streamlit app:
 streamlit run app.py
 ```
 
-The app opens with Demo Mode on by default for a 3-5 minute walkthrough.
+The app opens to **Executive Triage** in **Synthetic demo view** for a 3-5 minute walkthrough.
+
+To run the default public/MVP synthetic demo:
+
+```bash
+python run_demo.py
+streamlit run app.py
+```
+
+To use source-derived/internal data, set the profile explicitly in an authorized/internal environment only:
+
+```bash
+set SEZ_DATA_PROFILE=source
+python run_demo.py
+streamlit run app.py
+```
+
+On macOS/Linux shells, use `export SEZ_DATA_PROFILE=source` instead.
 
 ## Demo And Source Data
 
-The current structured screening dataset covers 35 detected zone profile records and 35 normalized indicator records based on the source digest. The source digest says the CSV was created from detected zone profile rows and 2026 colonization metrics where reliable normalization was possible.
+The default MVP demo uses `data/synthetic/SEZ_Key_Indicators_Normalized.csv` and `data/synthetic/legal_fiscal_placeholders.csv`. These files contain hypothetical synthetic zones only, including synthetic D4 legal status, D5/FBR fiscal exposure bands, additionality/counterfactual/effectiveness flags, KPI and pilot-readiness fields, and enterprise-level summaries.
 
-Exact row-level verification should use the original workbook and source documents before policy use. The prototype preserves uncertainty, missing fields, source-scope mismatch, cross-source/status conflicts, and validation flags instead of treating the dataset as complete.
+The older source-derived structured screening dataset covers 35 detected zone profile records and 35 indicator records based on the source digest. It is retained for internal/reference use, but it is not the default public demo profile.
 
-If `data/SEZ_Key_Indicators_Normalized.csv` is missing, the pipeline creates a clearly marked synthetic demo dataset so the app can still run.
+Exact row-level verification for any source-derived/internal use should use the original workbook and source documents before policy use. The prototype preserves uncertainty, missing fields, source-scope mismatch, cross-source/status conflicts, and validation flags instead of treating any dataset as complete.
+
+If `data/synthetic/SEZ_Key_Indicators_Normalized.csv` is missing, the pipeline creates a clearly marked fallback demo dataset and records a warning in the run metadata. It does not silently switch to source-derived data.
 
 ## Data Needed For Real Use
 
@@ -61,13 +80,11 @@ Real policy use requires validated source inputs, including:
 
 ## Demo Script
 
-1. Start on Executive View and explain that the tool is a provisional decision-support layer, not a final decision system.
-2. Show Zone Explorer for the reported-production demo case and point out the clean zone summary and additionality caveat.
-3. Open Recommendation Engine and show provisional treatment, open validation gates, reason codes, calibration output, next action, validator, and human review.
-4. Switch to the low-data-confidence demo case and show why the output is more data required.
-5. Switch to the legal/fiscal review case and show D4 legal and D5/FBR validation requirements.
-6. Open Scenario Settings and compare Base, IMF strict triage, Data-quality conservative, and Pilot-readiness screen.
-7. Open Export, generate the selected-zone memo, and show the CSV/memo outputs.
+1. Start on **Executive Triage**. Explain that the prototype organizes demo-zone records into provisional review pathways; it does not approve incentives or calculate tax/fiscal impacts.
+2. Open **Case Review**. Show one selected case as a human-review memo with review pathway, reason codes, open gates, next action, validation owner, and human review required.
+3. Open **Data Confidence**. Explain how the app preserves uncertainty, validation flags, source-scope limits, and synthetic-data caveats instead of treating the dataset as complete.
+4. Open **Export Memo**. Generate a selected-zone memo and point out the CSV/memo outputs for review or follow-up work.
+5. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, and no final legal, fiscal, tax, or incentive decision.
 
 ## Outputs
 
@@ -86,6 +103,8 @@ The pipeline writes local outputs to `outputs/`:
 
 ## Limitations
 
-Legal, fiscal, compliance, enterprise-level, and additionality fields are not yet validated for policy use. Fiscal exposure and FBR/customs inputs remain pending D5 verification. Legal status remains pending D4 review. Reported production or construction is not proof of incentive effectiveness. Additionality and net fiscal/economic impact require separate validation.
+The default public/MVP demo uses hypothetical synthetic zones. Outputs are provisional screening outputs for human review. They do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
+
+Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis. Reported production or construction is not proof of incentive effectiveness. Additionality and net fiscal/economic impact require separate validation.
 
 This prototype supports the explainable decision layer around fiscal cost analysis, calibration, legal review, and pilot screening. It is not a full policy system, final tax model, or calibration-rate optimizer.

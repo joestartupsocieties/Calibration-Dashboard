@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 import html
+import os
 import re
 import sys
 from pathlib import Path
@@ -23,31 +25,27 @@ from sez_calibration.recommendation_engine import (  # noqa: E402
     load_reason_codes,
     run_recommendation_engine,
 )
+from sez_calibration.ui_copy import (  # noqa: E402
+    APP_SUBTITLE,
+    APP_TITLE,
+    DATA_PROFILE_LABEL,
+    DATASET_BASIS_LABEL,
+    HUMAN_REVIEW_LABEL,
+    NON_DECISION_STATEMENT,
+    REAL_USE_REQUIREMENTS,
+)
 
 
 APP_VERSION = "prototype-demo-v0.8"
-APP_TITLE = "SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype"
-APP_SUBTITLE = (
-    "Decision-support prototype for SEZ fiscal exposure, legal/compliance triage, "
-    "calibration logic, and pilot screening."
-)
-WARNING_TEXT = (
-    "Prototype only. Outputs are provisional screening results for human review. "
-    "The tool does not clear incentives, set tax rates, calculate final fiscal cost, or replace "
-    "BOI, FBR, Finance, SEZA, legal, IMF, or programme review."
-)
+WARNING_TEXT = NON_DECISION_STATEMENT
 ADDITIONALITY_NOTE = (
     "Reported production or construction is not treated as proof of incentive effectiveness. "
     "Additionality and net fiscal/economic impact require separate validation."
 )
-FOOTER_TEXT = (
-    "This prototype is intended to support structured analysis and discussion. It does not make binding "
-    "policy, legal, fiscal, or incentive decisions. Final determinations require validated source data "
-    "and clearance by the relevant government, legal, fiscal, and programme authorities."
-)
+FOOTER_TEXT = "Prototype screening output. Human review required."
 DATA_MODE_OPTIONS = [
     "Synthetic demo data",
-    "Consolidated source package",
+    "Restricted internal dataset",
     "Verified source-cleared data",
 ]
 DATA_MODE_WARNING = "Warning: confirm that this dataset is cleared for use in this environment before sharing the app link."
@@ -58,17 +56,17 @@ PUBLIC_LINK_WARNING = (
 SOURCE_PERMISSION_WARNING = "Source data may require permission before external circulation."
 REASON_CODES_FILE = ROOT / "config" / "reason_codes_v0_5_lite.yaml"
 UI_CACHE_VERSION = APP_VERSION
+SHOW_ADVANCED_SCENARIOS = os.getenv("SHOW_ADVANCED_SCENARIOS") == "1"
 
 PAGES = [
-    "Executive View",
-    "Zone Explorer",
-    "Recommendation Engine",
-    "Data Intake",
-    "Data Validation & Source Confidence",
-    "KPI Assurance",
-    "Scenario Settings",
-    "Export",
+    "Executive Triage",
+    "Case Review",
+    "Data Confidence",
+    "Export Memo",
+    "About / Limitations",
 ]
+if SHOW_ADVANCED_SCENARIOS:
+    PAGES.append("Scenario Settings")
 CONFIDENCE_BANDS = ["low", "medium", "high"]
 DATA_INTAKE_TYPES = [
     "Zone master / profile data",
@@ -457,11 +455,11 @@ GATE_LABELS = {
     "net_impact_unknown": "Net fiscal/economic impact is not yet validated",
     "incentive_effectiveness_uncertain": "Incentive effectiveness is not yet validated or weak",
     "weak_incentive_effectiveness_evidence": "Vacancy or allotment-only movement is weak evidence of incentive effectiveness",
-    "scenario_minimum_confidence_band": "Scenario Settings: minimum confidence band not met",
-    "scenario_legal_low_risk_required": "Scenario Settings: low legal risk required",
-    "scenario_fiscal_data_required": "Scenario Settings: D5 fiscal data required",
-    "scenario_construction_excluded": "Scenario Settings: construction-stage zones excluded",
-    "scenario_unknown_developer_compliance_blocker": "Scenario Settings: developer compliance must be validated",
+    "scenario_minimum_confidence_band": "Assumption gate: minimum confidence band not met",
+    "scenario_legal_low_risk_required": "Assumption gate: low legal risk required",
+    "scenario_fiscal_data_required": "Assumption gate: D5 fiscal data required",
+    "scenario_construction_excluded": "Assumption gate: construction-stage zones excluded",
+    "scenario_unknown_developer_compliance_blocker": "Assumption gate: developer compliance must be validated",
 }
 
 
@@ -477,23 +475,57 @@ def inject_css() -> None:
         """
         <style>
         [data-testid="stSidebar"], [data-testid="collapsedControl"] {display: none;}
-        .block-container {padding-top: 1.2rem; padding-bottom: 2.2rem; max-width: 1400px;}
-        h1 {letter-spacing: 0;}
+        .block-container {padding-top: 0.65rem; padding-bottom: 2.2rem; max-width: 1320px;}
+        h1, h2, h3, h4 {letter-spacing: 0;}
+        h3 {font-size: 1.18rem; margin-top: 1.1rem;}
+        h4 {font-size: 1rem; margin-top: 0.9rem;}
         .prototype-kicker {
             color: #4b5563;
             font-size: 0.95rem;
             margin-bottom: 0.3rem;
         }
-        .answer-box, .mapping-card, .metric-card, .note-card, .output-card, .zone-header-card, .interpretation-card {
+        .mvp-header {
+            align-items: flex-start;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            gap: 1rem;
+            justify-content: space-between;
+            margin-bottom: 0.35rem;
+            padding-bottom: 0.45rem;
+        }
+        .mvp-header-text {max-width: 820px;}
+        .mvp-title {
+            color: #0f172a;
+            font-size: 1.52rem;
+            font-weight: 760;
+            letter-spacing: 0;
+            line-height: 1.12;
+            margin-bottom: 0.12rem;
+        }
+        .mvp-subtitle {
+            color: #475569;
+            font-size: 0.9rem;
+            line-height: 1.35;
+            margin-bottom: 0;
+        }
+        .mvp-header-badges {
+            flex: 0 0 auto;
+            padding-top: 0.08rem;
+            text-align: right;
+        }
+        .mvp-nav {
+            margin: 0.1rem 0 0.95rem 0;
+        }
+        .answer-box, .mapping-card, .metric-card, .note-card, .output-card, .zone-header-card, .interpretation-card, .case-memo-card, .summary-card, .callout-card, .panel-card {
             border: 1px solid #d8dee9;
             border-radius: 8px;
             background: #ffffff;
-            padding: 1rem;
+            padding: 0.86rem;
             box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         .metric-card {
-            min-height: 112px;
-            border-left: 4px solid #2563eb;
+            min-height: 92px;
+            border-left: 3px solid #2563eb;
         }
         .metric-label {
             color: #4b5563;
@@ -504,29 +536,81 @@ def inject_css() -> None:
         }
         .metric-value {
             color: #111827;
-            font-size: 2rem;
+            font-size: 1.62rem;
             font-weight: 650;
             line-height: 1.15;
-            margin-top: 0.35rem;
+            margin-top: 0.28rem;
         }
         .metric-note {
             color: #6b7280;
             font-size: 0.82rem;
             margin-top: 0.25rem;
         }
-        .badge-row {display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.35rem 0 1rem 0;}
+        .badge-row {display: flex; flex-wrap: wrap; gap: 0.34rem; margin: 0.25rem 0 0.55rem 0;}
         .badge {
             display: inline-block;
             border-radius: 999px;
-            padding: 0.22rem 0.58rem;
-            font-size: 0.78rem;
+            padding: 0.2rem 0.52rem;
+            font-size: 0.74rem;
             font-weight: 600;
             background: #eef2ff;
             color: #3730a3;
+            line-height: 1.15;
+            max-width: 100%;
+            white-space: normal;
         }
         .badge.warning {background: #fff7ed; color: #9a3412;}
         .badge.good {background: #ecfdf5; color: #047857;}
         .badge.neutral {background: #f3f4f6; color: #374151;}
+        .badge.blue {background: #eff6ff; color: #1d4ed8;}
+        .badge.red {background: #fef2f2; color: #991b1b;}
+        .badge.amber {background: #fffbeb; color: #92400e;}
+        .summary-card {
+            min-height: 92px;
+            margin-bottom: 0.75rem;
+        }
+        .summary-card-title {
+            color: #334155;
+            font-size: 0.82rem;
+            font-weight: 750;
+            line-height: 1.25;
+            margin-bottom: 0.35rem;
+        }
+        .summary-card-value {
+            color: #0f172a;
+            font-size: 1.35rem;
+            font-weight: 760;
+            line-height: 1.1;
+        }
+        .summary-card-note {
+            color: #64748b;
+            font-size: 0.78rem;
+            margin-top: 0.28rem;
+        }
+        .callout-card {
+            background: #f8fafc;
+            border-color: #dbe3ef;
+            color: #334155;
+            line-height: 1.45;
+            margin: 0.55rem 0 0.85rem 0;
+        }
+        .callout-title {
+            color: #0f172a;
+            font-size: 0.9rem;
+            font-weight: 750;
+            margin-bottom: 0.25rem;
+        }
+        .callout-body {
+            color: #334155;
+            font-size: 0.9rem;
+        }
+        .panel-card {margin: 0.65rem 0 0.9rem 0;}
+        .panel-title {
+            color: #0f172a;
+            font-size: 0.96rem;
+            font-weight: 760;
+            margin-bottom: 0.45rem;
+        }
         .section-rule {
             height: 1px;
             background: #e5e7eb;
@@ -557,6 +641,66 @@ def inject_css() -> None:
             font-size: 1.2rem;
             font-weight: 700;
             line-height: 1.3;
+        }
+        .case-memo-card {
+            margin-bottom: 0.85rem;
+        }
+        .case-memo-title {
+            color: #0f172a;
+            font-size: 1rem;
+            font-weight: 750;
+            margin-bottom: 0.45rem;
+        }
+        .case-memo-body {
+            color: #334155;
+            font-size: 0.95rem;
+            line-height: 1.48;
+        }
+        .reason-code-row {
+            align-items: flex-start;
+            display: flex;
+            gap: 0.55rem;
+            margin: 0.32rem 0;
+        }
+        .reason-pill {
+            background: #eef2ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 999px;
+            color: #3730a3;
+            display: inline-block;
+            flex: 0 0 auto;
+            font-size: 0.76rem;
+            font-weight: 750;
+            line-height: 1;
+            padding: 0.28rem 0.5rem;
+        }
+        .reason-text {
+            color: #334155;
+            font-size: 0.92rem;
+            line-height: 1.35;
+        }
+        .case-header-card {
+            background: #ffffff;
+            border: 1px solid #d8dee9;
+            border-radius: 8px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            margin: 0.55rem 0 0.9rem 0;
+            padding: 0.95rem;
+        }
+        .case-header-title {
+            color: #0f172a;
+            font-size: 1.25rem;
+            font-weight: 780;
+            line-height: 1.2;
+            margin-bottom: 0.25rem;
+        }
+        .case-header-meta {
+            color: #475569;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem 0.75rem;
+            font-size: 0.88rem;
+            margin-bottom: 0.45rem;
         }
         .zone-header-card {
             border-left: 5px solid #2563eb;
@@ -594,6 +738,48 @@ def inject_css() -> None:
             padding-left: 1.2rem;
         }
         div[data-testid="stSelectbox"] label {font-weight: 650;}
+        div[data-testid="stRadio"] > label {display: none;}
+        div[role="radiogroup"] {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
+            display: inline-flex;
+            gap: 0.16rem;
+            padding: 0.16rem;
+        }
+        div[role="radiogroup"] label {
+            background: transparent;
+            border-radius: 999px;
+            margin: 0;
+            padding: 0.14rem 0.34rem;
+        }
+        div[role="radiogroup"] label:has(input:checked) {
+            background: #ffffff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+        }
+        div[data-testid="stButton"] button,
+        div[data-testid="stDownloadButton"] button {
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #0f172a;
+            font-weight: 650;
+        }
+        div[data-testid="stButton"] button:hover,
+        div[data-testid="stDownloadButton"] button:hover {
+            border-color: #64748b;
+            color: #0f172a;
+        }
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        @media (max-width: 900px) {
+            .mvp-header {display: block;}
+            .mvp-header-badges {text-align: left;}
+            .mvp-title {font-size: 1.35rem;}
+            div[role="radiogroup"] {border-radius: 12px; flex-wrap: wrap;}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -619,14 +805,23 @@ def apply_posture_defaults() -> None:
 
 
 def initialize_state() -> None:
+    legacy_page_map = {
+        "Executive View": "Executive Triage",
+        "Zone Explorer": "Case Review",
+        "Recommendation Engine": "Case Review",
+        "Screening Output Engine": "Case Review",
+        "Data Intake": "Data Confidence",
+        "Data Validation": "Data Confidence",
+        "Data Validation & Source Confidence": "Data Confidence",
+        "KPI Assurance": "Data Confidence",
+        "Export": "Export Memo",
+    }
     if "current_page" not in st.session_state:
-        st.session_state.current_page = "Executive View"
-    elif st.session_state.current_page == "Data Validation":
-        st.session_state.current_page = "Data Validation & Source Confidence"
-    elif st.session_state.current_page == "Screening Output Engine":
-        st.session_state.current_page = "Recommendation Engine"
+        st.session_state.current_page = "Executive Triage"
+    elif st.session_state.current_page in legacy_page_map:
+        st.session_state.current_page = legacy_page_map[st.session_state.current_page]
     elif st.session_state.current_page not in PAGES:
-        st.session_state.current_page = "Executive View"
+        st.session_state.current_page = "Executive Triage"
     if st.session_state.get("policy_posture_preset") == "Data confidence conservative":
         st.session_state.policy_posture_preset = "Data-quality conservative"
     if "policy_posture_preset" not in st.session_state or st.session_state.policy_posture_preset not in POSTURE_DEFAULTS:
@@ -634,10 +829,10 @@ def initialize_state() -> None:
         apply_posture_defaults()
     for key, value in POSTURE_DEFAULTS[st.session_state.policy_posture_preset].items():
         st.session_state.setdefault(key, value)
-    st.session_state.setdefault("demo_mode", True)
-    st.session_state.setdefault("anonymize_zone_names", True)
+    st.session_state.demo_mode = True
+    st.session_state.anonymize_zone_names = True
     st.session_state.setdefault("demo_case_key", "zone_a")
-    st.session_state.setdefault("data_mode", "Consolidated source package")
+    st.session_state.data_mode = "Synthetic demo data"
 
 
 def scenario_from_state() -> dict[str, object]:
@@ -778,7 +973,7 @@ def anonymized_demo_record(row: pd.Series, case: dict[str, object] | None = None
     label = str(case.get("anonymous_label") if case else "Demo zone")
     out["zone_name"] = label
     if "developer_name" in out.index:
-        out["developer_name"] = "Anonymized for demo"
+        out["developer_name"] = "Synthetic demo dataset"
     return out
 
 
@@ -832,7 +1027,7 @@ def anonymize_demo_table(df: pd.DataFrame, recommendations: pd.DataFrame) -> pd.
                     out.loc[mask, column] = label
             for column in ["developer_name", "Developer"]:
                 if column in out.columns:
-                    out.loc[mask, column] = "Anonymized for demo"
+                    out.loc[mask, column] = "Synthetic demo dataset"
     for column in ["zone_name", "Zone"]:
         if column in out.columns:
             out[column] = out[column].replace(name_map)
@@ -860,11 +1055,11 @@ def render_guided_demo_script() -> None:
 
 def render_demo_mode_panel(recommendations: pd.DataFrame) -> None:
     if not demo_mode_active():
-        st.caption("Demo Mode is off. Full dataset exploration is enabled.")
+        st.caption("Synthetic demo view is not active. Full dataset exploration is enabled.")
         return
     cases = demo_case_catalog(recommendations)
     if not cases:
-        st.info("Demo Mode is on, but no demo cases are available in the current output set.")
+        st.info("Synthetic demo view is active, but no demo cases are available in the current output set.")
         return
     valid_keys = [str(case["key"]) for case in cases]
     if st.session_state.get("demo_case_key") not in valid_keys:
@@ -883,7 +1078,7 @@ def render_demo_mode_panel(recommendations: pd.DataFrame) -> None:
         with c2:
             selected = case_map[str(st.session_state.demo_case_key)]
             st.markdown(f"**Selected case:** {selected['label']}")
-            st.caption("Demo Mode shows the four-case walkthrough, hides raw technical logs, and uses anonymized labels by default.")
+            st.caption("Synthetic demo view shows the four-case walkthrough and hides raw technical logs by default.")
     if real_zone_names_visible():
         st.warning("Do not present real-zone treatment outputs as final. These are screening outputs only.")
     render_guided_demo_script()
@@ -893,21 +1088,21 @@ def sync_data_mode(summary: dict[str, Any]) -> None:
     if st.session_state.get("data_mode") == "Verified approved data":
         st.session_state.data_mode = "Verified source-cleared data"
     if st.session_state.get("data_mode") not in DATA_MODE_OPTIONS:
-        st.session_state.data_mode = "Consolidated source package"
-    if (summary.get("demo_data_used") or summary.get("demo_data_created")) and st.session_state.data_mode == "Consolidated source package":
+        st.session_state.data_mode = "Restricted internal dataset"
+    if (summary.get("demo_data_used") or summary.get("demo_data_created")) and st.session_state.data_mode == "Restricted internal dataset":
         st.session_state.data_mode = "Synthetic demo data"
 
 
 def data_mode_badge_html(mode: str) -> str:
     colors = {
         "Synthetic demo data": ("#ecfdf5", "#047857"),
-        "Consolidated source package": ("#fff7ed", "#c2410c"),
+        "Restricted internal dataset": ("#fff7ed", "#c2410c"),
         "Verified source-cleared data": ("#eff6ff", "#1d4ed8"),
     }
     background, color = colors.get(mode, ("#f8fafc", "#334155"))
     return (
         "<div class='badge-row'>"
-        f"<span class='badge' style='background:{background}; color:{color};'>Data mode: {html.escape(mode)}</span>"
+        f"<span class='badge' style='background:{background}; color:{color};'>Dataset view: {html.escape(mode)}</span>"
         "</div>"
     )
 
@@ -922,35 +1117,24 @@ def render_data_safeguards(summary: dict[str, Any]) -> None:
 
 
 def render_header(recommendations: pd.DataFrame, summary: dict[str, Any]) -> str:
-    sync_data_mode(summary)
-    nav_col, demo_col, context_col = st.columns([0.20, 0.24, 0.56], vertical_alignment="bottom")
-    with nav_col:
-        page = st.selectbox("Menu", PAGES, key="current_page")
-    with demo_col:
-        st.toggle("Demo Mode", key="demo_mode")
-        if demo_mode_active():
-            st.toggle("Anonymize zone names in demo mode", key="anonymize_zone_names")
-        st.selectbox("Data mode", DATA_MODE_OPTIONS, key="data_mode")
-    with context_col:
-        st.markdown(
-            "<div class='badge-row'>"
-            "<span class='badge'>D5 fiscal cost analysis</span>"
-            "<span class='badge'>D6 calibration analysis</span>"
-            "<span class='badge'>D7 pilot design</span>"
-            "<span class='badge warning'>Human review required</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
     st.markdown(
-        f"<div class='prototype-kicker'>{html.escape(APP_CONFIG['version'].replace('-', ' '))}</div>",
+        "<div class='mvp-header'>"
+        "<div class='mvp-header-text'>"
+        f"<div class='mvp-title'>{html.escape(APP_CONFIG['title'])}</div>"
+        f"<div class='mvp-subtitle'>{html.escape(APP_CONFIG['subtitle'])}</div>"
+        "</div>"
+        "<div class='mvp-header-badges'>"
+        "<div class='badge-row'>"
+        f"<span class='badge good'>{html.escape(DATA_PROFILE_LABEL)}</span>"
+        f"<span class='badge warning'>{html.escape(HUMAN_REVIEW_LABEL)}</span>"
+        "</div>"
+        "</div>"
+        "</div>",
         unsafe_allow_html=True,
     )
-    st.title(APP_CONFIG["title"])
-    st.caption(APP_CONFIG["subtitle"])
-    st.warning(APP_CONFIG["warning_banner"])
-    render_data_safeguards(summary)
-    render_demo_mode_panel(recommendations)
+    st.markdown("<div class='mvp-nav'>", unsafe_allow_html=True)
+    page = st.radio("View", PAGES, key="current_page", horizontal=True, label_visibility="collapsed")
+    st.markdown("</div>", unsafe_allow_html=True)
     return page
 
 
@@ -1032,6 +1216,58 @@ def metric_card(label: str, value: object, note: str = "") -> None:
         "</div>",
         unsafe_allow_html=True,
     )
+
+
+def callout_card(title: str, body: str) -> None:
+    st.markdown(
+        "<div class='callout-card'>"
+        f"<div class='callout-title'>{html.escape(visible_text(title))}</div>"
+        f"<div class='callout-body'>{html.escape(visible_text(body))}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def summary_card(title: str, value: object, note: str = "") -> None:
+    st.markdown(
+        "<div class='summary-card'>"
+        f"<div class='summary-card-title'>{html.escape(visible_text(title))}</div>"
+        f"<div class='summary-card-value'>{html.escape(visible_text(value))}</div>"
+        f"<div class='summary-card-note'>{html.escape(visible_text(note, ''))}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def badge_html(text: object, tone: str = "neutral") -> str:
+    safe_tone = tone if tone in {"neutral", "good", "warning", "blue", "red", "amber"} else "neutral"
+    return f"<span class='badge {safe_tone}'>{html.escape(visible_text(text))}</span>"
+
+
+def confidence_tone(value: object) -> str:
+    text = str(value or "").lower()
+    if "high" in text:
+        return "good"
+    if "medium" in text:
+        return "blue"
+    if "low" in text:
+        return "amber"
+    if "do not use" in text or "do_not_use" in text:
+        return "red"
+    return "neutral"
+
+
+def pathway_tone(value: object) -> str:
+    text = str(value or "").lower()
+    if "pilot" in text:
+        return "blue"
+    if "more data" in text or "do not use" in text:
+        return "amber"
+    if "legal" in text or "fiscal" in text or "fbr" in text:
+        return "warning"
+    if "no new" in text or "phase-out" in text or "sanction" in text:
+        return "red"
+    return "neutral"
 
 
 def note_card(title: str, lines: list[str]) -> None:
@@ -1255,9 +1491,8 @@ def format_area(value: object) -> str:
 
 
 def source_reference(row: pd.Series) -> str:
-    package = display_value(row.get("source_file"), "Consolidated SEZ source package")
+    package = DATASET_BASIS_LABEL
     source_row = display_value(row.get("source_row"), "")
-    package = "Consolidated SEZ source package" if package else "Consolidated SEZ source package"
     if source_row:
         return f"{package} / row {source_row}"
     return package
@@ -1297,7 +1532,7 @@ def selected_zone_summary(row: pd.Series) -> pd.DataFrame:
         ("Additionality confidence", row.get("additionality_confidence")),
         ("Net fiscal/economic impact", row.get("net_fiscal_economic_impact")),
         ("Incentive-effectiveness confidence", row.get("incentive_effectiveness_confidence")),
-        ("Source package / source row", source_reference(row)),
+        ("Structured dataset / source row", source_reference(row)),
     ]
     return pd.DataFrame(
         [{"Field": field, "Value": display_value(value)} for field, value in rows],
@@ -1776,15 +2011,10 @@ def severity_label(value: object) -> str:
 
 
 def validation_source_reference(source_file: object, source_row: object) -> str:
-    file_text = display_value(source_file, "")
     row_text = display_value(source_row, "")
-    if file_text and row_text:
-        return f"{file_text} / row {row_text}"
-    if file_text:
-        return file_text
     if row_text:
-        return f"Source row {row_text}"
-    return "Consolidated SEZ source package"
+        return f"{DATASET_BASIS_LABEL} / row {row_text}"
+    return DATASET_BASIS_LABEL
 
 
 def validation_owner(field: object, issue_type: object, description: object) -> str:
@@ -1853,12 +2083,12 @@ def validation_row(
 ) -> dict[str, object]:
     return {
         "Zone": display_value(zone, "All zones"),
-        "Field": readable_field(str(field or "")) if str(field or "").strip() else "Source package",
+        "Field": readable_field(str(field or "")) if str(field or "").strip() else "Screening dataset",
         "Validation flag": display_value(flag, "Validation flag"),
         "Severity": display_value(severity, "Caution"),
         "Why it matters": display_value(why, "This field affects screening confidence and decision routing."),
         "Recommended fix": display_value(fix, "Manual source review required."),
-        "Source file / sheet / row": display_value(source, "Consolidated SEZ source package"),
+        "Source file / sheet / row": display_value(source, DATASET_BASIS_LABEL),
         "Owner": display_value(owner, "BOI / SEZA data team"),
     }
 
@@ -2056,12 +2286,135 @@ def executive_table(display_recommendations: pd.DataFrame) -> pd.DataFrame:
             "Legal Status": "Legal status",
             "Fiscal Status": "Fiscal status",
             "Additionality Status": "Additionality status",
-            "Provisional Treatment": "Provisional treatment",
+            "Provisional Treatment": "Review pathway",
             "Open Gates": "Open gates",
             "Main Reason Codes": "Main reason codes",
             "Next Action": "Next action",
         }
     )
+
+
+EXECUTIVE_FILTER_OPTIONS = [
+    "All",
+    "More data required",
+    "Legal review required",
+    "Fiscal/FBR verification required",
+    "Transition review",
+    "Potential pilot-review flag",
+    "Low confidence",
+]
+
+
+def executive_pathway_text(row: pd.Series) -> str:
+    raw = row.get("provisional_treatment", row.get("recommended_treatment", row.get("Provisional Treatment", "")))
+    text = display_value(raw, "Human review required")
+    replacements = {
+        "Possible pilot screen candidate pending D4 legal review and D5 fiscal verification": (
+            "Potential pilot-review flag subject to D4/D5 validation"
+        ),
+        "Potential pilot-review flag - subject to D4/D5 validation": (
+            "Potential pilot-review flag subject to D4/D5 validation"
+        ),
+        "Possible transition candidate": "Transition review",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    if "Potential pilot-review flag" in text and "D4/D5 validation" not in text:
+        text = f"{text} subject to D4/D5 validation"
+    return visible_text(text)
+
+
+def executive_open_gates(row: pd.Series) -> str:
+    gates = split_pipe_text(row.get("open_validation_gates", ""))
+    if not gates:
+        gates = split_pipe_text(row.get("blocking_validation_requirements", ""))
+    if not gates:
+        formatted = format_gates(row.get("hard_gates_triggered", ""))
+        gates = [] if formatted == "None" else [formatted]
+    if not gates:
+        return "None identified"
+    return "; ".join(visible_text(gate) for gate in gates)
+
+
+def executive_triage_table(recommendations: pd.DataFrame) -> pd.DataFrame:
+    table = pd.DataFrame(
+        {
+            "Zone": recommendations.get("zone_name", pd.Series(dtype=str)).apply(display_value),
+            "Province": recommendations.get("province", pd.Series(dtype=str)).apply(display_value),
+            "Activity category": recommendations.get("activity_category", pd.Series(dtype=str)).apply(activity_label),
+            "Data confidence": recommendations.get("data_confidence_band", pd.Series(dtype=str)).apply(
+                lambda value: visible_text(str(value).replace("_", " ").title(), "Not available")
+            ),
+            "Review pathway": recommendations.apply(executive_pathway_text, axis=1),
+            "Reason codes": recommendations.get("reason_codes", pd.Series(dtype=str)).apply(main_reason_codes),
+            "Open gates": recommendations.apply(executive_open_gates, axis=1),
+            "Validator / owner": recommendations.get("validator_owner", pd.Series(dtype=str)).apply(display_value),
+            "Next action": recommendations.get("next_actions", pd.Series(dtype=str)).apply(next_action_label),
+        }
+    )
+    for column in table.columns:
+        table[column] = table[column].apply(display_value)
+    return table
+
+
+def executive_count(table: pd.DataFrame, pattern: str) -> int:
+    text = table.astype(str).agg(" ".join, axis=1)
+    return int(text.str.contains(pattern, case=False, regex=True, na=False).sum())
+
+
+def executive_pathway_summary(table: pd.DataFrame) -> pd.DataFrame:
+    counts = table["Review pathway"].value_counts(dropna=False).reset_index()
+    counts.columns = ["Review pathway", "Zones"]
+    total = max(int(counts["Zones"].sum()), 1)
+    counts["Share"] = counts["Zones"].apply(lambda count: f"{count / total:.0%}")
+    return counts
+
+
+def executive_value_counts(
+    recommendations: pd.DataFrame,
+    column: str,
+    *,
+    split_pipe: bool = False,
+    limit: int = 8,
+) -> pd.DataFrame:
+    counter: Counter[str] = Counter()
+    if column not in recommendations.columns:
+        return pd.DataFrame(columns=["Signal", "Zones"])
+    for value in recommendations[column].fillna("").astype(str):
+        parts = split_pipe_text(value) if split_pipe else split_reason_codes(value)
+        for part in parts:
+            clean = visible_text(part)
+            if clean.lower() in {"none", "none identified", "not available"}:
+                continue
+            counter[clean] += 1
+    rows = [{"Signal": key, "Zones": count} for key, count in counter.most_common(limit)]
+    return pd.DataFrame(rows, columns=["Signal", "Zones"])
+
+
+def render_pathway_summary_cards(summary: pd.DataFrame) -> None:
+    if summary.empty:
+        callout_card("Pathway summary", "No review pathways were generated by the current run.")
+        return
+    for start in range(0, len(summary), 3):
+        cols = st.columns(3)
+        for col, (_, row) in zip(cols, summary.iloc[start : start + 3].iterrows()):
+            with col:
+                summary_card(row.get("Review pathway"), row.get("Zones"), f"{row.get('Share')} of screened zones")
+
+
+def executive_filter_mask(table: pd.DataFrame, selected_filter: str) -> pd.Series:
+    if selected_filter == "All":
+        return pd.Series([True] * len(table), index=table.index)
+    text = table.astype(str).agg(" ".join, axis=1)
+    patterns = {
+        "More data required": "More data required",
+        "Legal review required": "legal|D4|R01|R02|R14|R20",
+        "Fiscal/FBR verification required": "fiscal|FBR|customs|D5|R09|R10|R13|R24",
+        "Transition review": "transition|grandfather",
+        "Potential pilot-review flag": "Potential pilot-review flag",
+        "Low confidence": "Low|Do not use",
+    }
+    return text.str.contains(patterns.get(selected_filter, ""), case=False, regex=True, na=False)
 
 
 def render_footer() -> None:
@@ -2072,110 +2425,62 @@ def render_footer() -> None:
 
 
 def render_executive_view(frames: dict[str, pd.DataFrame], summary: dict[str, Any], display_recommendations: pd.DataFrame) -> None:
-    page_display = (
-        demo_display_rows(display_recommendations, frames["recommendations"]) if demo_mode_active() else display_recommendations
-    )
-    if demo_mode_active():
-        st.info("Demo Mode is on. The executive table is limited to four anonymized walkthrough cases.")
+    recommendations = frames["recommendations"]
+    triage = executive_triage_table(recommendations)
 
-    note_card(
-        "What this tool helps answer",
-        [
-            "Which zones need more data before fiscal or calibration use?",
-            "Which zones require legal or contractual review?",
-            "Which zones have reported production or construction movement?",
-            "Which zones may be unsuitable for new fiscal support?",
-            "Which zones may merit pilot review, subject to validation?",
-            "What assumptions or data gaps drive the provisional result?",
-        ],
+    callout_card(
+        "Executive triage",
+        "This view organizes demo-zone records into provisional review pathways; it does not approve incentives "
+        "or calculate tax/fiscal impacts.",
     )
-    st.info(APP_CONFIG["additionality_note"])
 
-    st.markdown("### Executive Metrics")
     c1, c2, c3 = st.columns(3)
     with c1:
-        metric_card("Zones loaded", summary.get("zone_records_loaded", len(frames["zones"])), "Structured screening dataset")
+        metric_card("Zones screened", summary.get("zone_records_loaded", len(recommendations)), "Structured screening dataset")
     with c2:
-        metric_card("Validation flags", summary.get("data_quality_issue_count", 0), "Open source and field checks")
+        metric_card("More data required", executive_count(triage, "More data required"), "Source verification before use")
     with c3:
-        metric_card("Cross-source/status conflicts", summary.get("contradiction_count", 0), "Status or acreage conflicts")
+        metric_card("Legal review required", executive_count(triage, "legal|D4|R01|R02|R14|R20"), "D4 legal gate")
 
     c4, c5, c6 = st.columns(3)
     with c4:
-        metric_card(
-            "More data required",
-            int(page_display["Provisional Treatment"].astype(str).str.contains("More data", case=False, na=False).sum())
-            if demo_mode_active()
-            else summary.get("more_data_required", 0),
-            "Before fiscal/calibration use",
-        )
+        metric_card("Fiscal/FBR verification required", executive_count(triage, "fiscal|FBR|customs|D5|R09|R10|R13|R24"), "D5/FBR/customs gate")
     with c5:
+        metric_card("Transition / grandfathering review", executive_count(triage, "transition|grandfather"), "Legal and fiscal caveats apply")
+    with c6:
         metric_card(
             "Potential pilot-review flags",
-            int(page_display["Provisional Treatment"].astype(str).str.contains("pilot", case=False, na=False).sum())
-            if demo_mode_active()
-            else summary.get("possible_pilot_screen_candidates", 0),
-            "Subject to validation",
-        )
-    with c6:
-        metric_card("Potential support-review flags", support_review_flag_count(page_display), "D4/D5 dependency applies")
-
-    c7, c8, c9 = st.columns(3)
-    with c7:
-        metric_card("Legal/fiscal validation pending", review_count(frames["recommendations"]), "D4/D5 review trail")
-    with c8:
-        metric_card("Fiscal/FBR validation required", fiscal_validation_count(frames["recommendations"]), "D5/FBR/customs trail")
-    with c9:
-        metric_card("Legal review required", legal_review_count(frames["recommendations"]), "D4 gate or contract review")
-
-    st.markdown("### Executive Triage Table")
-    st.dataframe(executive_table(page_display), width="stretch", hide_index=True)
-
-    st.markdown("### D5 / D6 / D7 Mapping")
-    d5, d6, d7 = st.columns(3)
-    with d5:
-        mapping_card(
-            "D5 Fiscal Cost Analysis",
-            [
-                "fiscal exposure matrix",
-                "costing assumptions log",
-                "validation flags",
-                "sensitivity scenarios",
-                "zone-wise cost/risk flags",
-            ],
-        )
-    with d6:
-        mapping_card(
-            "D6 Calibration Analysis",
-            [
-                "legal/compliance gates",
-                "incentive scenario logic",
-                "cost-based support review",
-                "caps/sunset/audit trigger fields",
-                "reason-coded provisional treatment categories",
-            ],
-        )
-    with d7:
-        mapping_card(
-            "D7 Pilot Design",
-            [
-                "pilot-review flags",
-                "implementation readiness",
-                "KPI/monitoring needs",
-                "legal/fiscal validation prerequisites",
-                "pilot evaluation inputs",
-            ],
+            executive_count(triage, "Potential pilot-review flag"),
+            "Subject to D4/D5 validation",
         )
 
-    if not demo_mode_active():
-        with st.expander("Demo script"):
-            st.write(
-                "This prototype does not make final decisions. It shows how SEZ zone status, "
-                "legal/compliance risk, fiscal exposure, KPI performance, additionality assumptions, "
-                "and data confidence can be connected into provisional treatment categories with reason codes. "
-                "The value is that if the team disagrees with an output, we can see whether the issue is the data, "
-                "legal gate, fiscal assumption, KPI weight, or scenario setting."
-            )
+    st.markdown("### Pathway Summary")
+    pathway_summary = executive_pathway_summary(triage)
+    render_pathway_summary_cards(pathway_summary)
+
+    p2, p3 = st.columns(2)
+    with p2:
+        st.markdown("#### Dominant Reason Codes")
+        reason_summary = executive_value_counts(recommendations, "reason_codes", limit=8)
+        st.dataframe(reason_summary, width="stretch", hide_index=True)
+    with p3:
+        st.markdown("#### Dominant Open Gates")
+        gate_summary = executive_value_counts(recommendations, "open_validation_gates", split_pipe=True, limit=8)
+        st.dataframe(gate_summary, width="stretch", hide_index=True)
+
+    selected_filter = st.radio(
+        "Filter provisional review pathways",
+        EXECUTIVE_FILTER_OPTIONS,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+    filtered = triage[executive_filter_mask(triage, selected_filter)]
+
+    st.markdown("### Portfolio Triage")
+    st.dataframe(filtered, width="stretch", hide_index=True)
+    st.caption(
+        f"Showing {len(filtered)} of {len(triage)} zones. Use Case Review to open a focused walkthrough case."
+    )
 
 
 def render_zone_explorer(frames: dict[str, pd.DataFrame], display_recommendations: pd.DataFrame) -> None:
@@ -2198,9 +2503,9 @@ def render_zone_explorer(frames: dict[str, pd.DataFrame], display_recommendation
             if not real_zone_names_visible():
                 filtered.loc[mask, "zone_name"] = case["anonymous_label"]
                 if "developer_name" in filtered.columns:
-                    filtered.loc[mask, "developer_name"] = "Anonymized for demo"
+                    filtered.loc[mask, "developer_name"] = "Synthetic demo dataset"
         st.markdown("### Demo Cases")
-        st.caption("Demo Mode shows the four-case walkthrough instead of full dataset filters.")
+        st.caption("Synthetic demo view shows the four-case walkthrough instead of full dataset filters.")
     else:
         c1, c2, c3, c4 = st.columns(4)
         province_filter = c1.multiselect(
@@ -2306,7 +2611,7 @@ def render_recommendation_engine(
         display_rec = display_recommendations[display_recommendations["zone_id"].astype(str) == str(selected_zone_id)].iloc[0].copy()
         if not real_zone_names_visible() and case:
             display_rec["zone_name"] = case["anonymous_label"]
-        st.info(f"Demo Mode selected case: {case['label'] if case else 'Selected demo case'}")
+        st.info(f"Synthetic demo case: {case['label'] if case else 'Selected demo case'}")
     else:
         selected = st.selectbox("Selected zone for explanation", recommendations["zone_name"].tolist())
         rec = recommendations[recommendations["zone_name"] == selected].iloc[0]
@@ -2418,6 +2723,614 @@ def render_recommendation_engine(
                 st.dataframe(friendly_dataframe(source), width="stretch", hide_index=True)
 
 
+def selected_demo_context(
+    frames: dict[str, pd.DataFrame],
+    display_recommendations: pd.DataFrame,
+) -> tuple[dict[str, object] | None, pd.Series, pd.Series]:
+    recommendations = frames["recommendations"]
+    case = current_demo_case(recommendations)
+    if case is None:
+        rec = recommendations.iloc[0].copy()
+        display_rec = display_recommendations.iloc[0].copy()
+        return None, rec, display_rec
+
+    selected_zone_id = case.get("zone_id")
+    rec_rows = recommendations[recommendations["zone_id"].astype(str) == str(selected_zone_id)]
+    display_rows = display_recommendations[display_recommendations["zone_id"].astype(str) == str(selected_zone_id)]
+    rec = rec_rows.iloc[0].copy() if not rec_rows.empty else recommendations.iloc[0].copy()
+    display_rec = display_rows.iloc[0].copy() if not display_rows.empty else display_recommendations.iloc[0].copy()
+
+    rec = anonymized_demo_record(rec, case)
+    display_rec["zone_name"] = case["anonymous_label"]
+    if "developer_name" in display_rec.index:
+        display_rec["developer_name"] = "Synthetic demo dataset"
+
+    source_rows = frames["zones"][frames["zones"]["zone_id"].astype(str) == str(selected_zone_id)]
+    if not source_rows.empty:
+        source = source_rows.iloc[0]
+        for column, value in source.items():
+            if column not in display_rec.index or display_value(display_rec.get(column), "") == "":
+                display_rec[column] = value
+        display_rec["zone_name"] = case["anonymous_label"]
+        display_rec["developer_name"] = "Synthetic demo dataset"
+
+    return case, rec, display_rec
+
+
+def case_review_pathway(row: pd.Series) -> str:
+    return executive_pathway_text(row)
+
+
+def case_review_text_blob(row: pd.Series) -> str:
+    fields = [
+        "provisional_treatment",
+        "recommended_treatment",
+        "open_validation_gates",
+        "blocking_validation_requirements",
+        "main_blockers",
+        "reason_codes",
+        "next_actions",
+        "required_data_action",
+        "required_legal_action",
+        "required_fbr_action",
+        "hard_gates_triggered",
+        "fiscal_data_status",
+        "fiscal_exposure_status",
+        "legal_status",
+    ]
+    return " ".join(str(row.get(field, "")) for field in fields).lower()
+
+
+def default_case_review_zone_id(recommendations: pd.DataFrame) -> str:
+    if recommendations.empty:
+        return ""
+    priorities = [
+        "fbr|fiscal|customs|d5|r09|r13",
+        "legal|d4|r01|r02|r14|r20",
+        "more data required|low_data_confidence|r08",
+    ]
+    text = recommendations.apply(case_review_text_blob, axis=1)
+    for pattern in priorities:
+        matches = recommendations[text.str.contains(pattern, case=False, regex=True, na=False)]
+        if not matches.empty:
+            return str(matches.iloc[0].get("zone_id", matches.index[0]))
+    return str(recommendations.iloc[0].get("zone_id", recommendations.index[0]))
+
+
+def case_review_selector_label(row: pd.Series) -> str:
+    zone = display_value(row.get("zone_name"), "Selected zone")
+    province = display_value(row.get("province"), "")
+    pathway = case_review_pathway(row)
+    if province:
+        return f"{zone} - {province} - {pathway}"
+    return f"{zone} - {pathway}"
+
+
+def case_review_selected_row(recommendations: pd.DataFrame) -> pd.Series:
+    if recommendations.empty:
+        return pd.Series(dtype=object)
+    zone_ids = [str(value) for value in recommendations["zone_id"].astype(str).tolist()]
+    if st.session_state.get("case_review_zone_id") not in zone_ids:
+        st.session_state.case_review_zone_id = default_case_review_zone_id(recommendations)
+    label_map = {
+        str(row.get("zone_id")): case_review_selector_label(row)
+        for _, row in recommendations.iterrows()
+    }
+    st.selectbox(
+        "Select case",
+        zone_ids,
+        key="case_review_zone_id",
+        format_func=lambda zone_id: label_map.get(str(zone_id), str(zone_id)),
+    )
+    selected = recommendations[recommendations["zone_id"].astype(str) == str(st.session_state.case_review_zone_id)]
+    if selected.empty:
+        return recommendations.iloc[0].copy()
+    return selected.iloc[0].copy()
+
+
+def fiscal_validation_required(row: pd.Series) -> bool:
+    values = [
+        str(row.get("fiscal_exposure_level", "")).strip().lower(),
+        str(row.get("fiscal_data_status", "")).strip().lower(),
+        str(row.get("fiscal_exposure_status", "")).strip().lower(),
+    ]
+    text = case_review_text_blob(row)
+    return any(value in {"", "unknown", "missing", "placeholder", "not yet validated"} for value in values) or bool(
+        re.search(r"fbr|fiscal|customs|d5|r09|r13", text)
+    )
+
+
+def legal_review_required(row: pd.Series) -> bool:
+    legal_risk = str(row.get("legal_risk_level", "")).strip().lower()
+    legal_status = str(row.get("legal_status", "")).strip().lower()
+    text = case_review_text_blob(row)
+    return legal_risk in {"", "unknown", "high", "not yet validated"} or "review" in legal_status or bool(
+        re.search(r"legal|d4|r01|r02|r14|r20", text)
+    )
+
+
+def additionality_caveat_required(row: pd.Series) -> bool:
+    additionality = str(row.get("additionality_confidence", "")).strip().lower()
+    counterfactual = str(row.get("counterfactual_status", "")).strip().lower()
+    effectiveness = str(row.get("incentive_effectiveness_confidence", "")).strip().lower()
+    unknown_values = {"", "unknown", "not assessed", "not yet validated", "weak"}
+    return additionality in unknown_values or counterfactual in unknown_values or effectiveness in unknown_values
+
+
+def case_review_gates(row: pd.Series) -> list[str]:
+    gates: list[str] = []
+    for field in ["open_validation_gates", "blocking_validation_requirements", "conditions_gates"]:
+        gates.extend(split_pipe_text(row.get(field, "")))
+    if fiscal_validation_required(row):
+        gates.append("D5/FBR fiscal exposure validation required before calibration use.")
+    if legal_review_required(row):
+        gates.append("D4 legal review required before treatment classification.")
+    if additionality_caveat_required(row):
+        gates.append("Reported activity is not treated as proof of additionality or incentive effectiveness.")
+    unique: list[str] = []
+    for gate in gates:
+        clean = visible_text(gate)
+        if clean and clean not in unique:
+            unique.append(clean)
+    return unique
+
+
+def case_review_blockers(row: pd.Series) -> list[str]:
+    blockers = split_pipe_text(row.get("main_blockers", ""))
+    blockers.extend(split_pipe_text(row.get("data_gaps", "")))
+    unique: list[str] = []
+    for blocker in blockers:
+        clean = visible_text(blocker)
+        if clean and clean not in unique:
+            unique.append(clean)
+    return unique
+
+
+def case_review_next_actions(row: pd.Series) -> list[str]:
+    actions = []
+    for field in ["next_actions", "required_data_action", "required_legal_action", "required_fbr_action"]:
+        actions.extend(split_pipe_text(row.get(field, "")) or [row.get(field, "")])
+    unique: list[str] = []
+    for action in actions:
+        clean = display_action_text(action)
+        if clean and clean != "Not available" and clean not in unique:
+            unique.append(clean)
+    return unique or ["Human review required before fiscal, legal, calibration, or pilot use."]
+
+
+def render_case_memo_card(title: str, body: object) -> None:
+    st.markdown(
+        "<div class='case-memo-card'>"
+        f"<div class='case-memo-title'>{html.escape(visible_text(title))}</div>"
+        f"<div class='case-memo-body'>{html.escape(visible_text(body))}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_case_header_card(row: pd.Series, pathway: str) -> None:
+    confidence = visible_text(str(row.get("data_confidence_band", "")).replace("_", " ").title())
+    activity = activity_label(row.get("activity_category"))
+    badges = "".join(
+        [
+            badge_html(confidence, confidence_tone(confidence)),
+            badge_html("Human review required", "warning"),
+            badge_html(pathway, pathway_tone(pathway)),
+        ]
+    )
+    st.markdown(
+        "<div class='case-header-card'>"
+        f"<div class='case-header-title'>{html.escape(display_value(row.get('zone_name'), 'Selected zone'))}</div>"
+        "<div class='case-header-meta'>"
+        f"<span><strong>Province:</strong> {html.escape(display_value(row.get('province')))}</span>"
+        f"<span><strong>Activity:</strong> {html.escape(activity)}</span>"
+        f"<span><strong>Reported status:</strong> {html.escape(display_value(row.get('operational_status')))}</span>"
+        "</div>"
+        f"<div class='badge-row'>{badges}</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def render_reason_code_pills(codes: object, reason_codes: dict[str, str]) -> None:
+    parts = split_reason_codes(codes)
+    if not parts:
+        st.write("No reason codes were generated for this case.")
+        return
+    html_rows = []
+    for code in parts:
+        reason = display_reason_text(reason_codes.get(code, "Unmapped reason code"))
+        html_rows.append(
+            "<div class='reason-code-row'>"
+            f"<span class='reason-pill'>{html.escape(code)}</span>"
+            f"<span class='reason-text'>{html.escape(reason)}</span>"
+            "</div>"
+        )
+    st.markdown("".join(html_rows), unsafe_allow_html=True)
+
+
+def render_support_context(row: pd.Series) -> None:
+    st.caption("Illustrative only - not an incentive award.")
+    cols = st.columns(4)
+    items = [
+        ("Support treatment", row.get("illustrative_support_treatment")),
+        ("Instrument", row.get("illustrative_instrument_options")),
+        ("Fiscal cap", row.get("fiscal_cap")),
+        ("Sunset", row.get("sunset")),
+    ]
+    for col, (label, value) in zip(cols, items):
+        with col:
+            summary_card(label, display_value(value))
+
+
+def confidence_band_counts(confidence: pd.DataFrame) -> dict[str, int]:
+    bands = confidence.get("data_confidence_band", pd.Series(dtype=str)).fillna("").astype(str).str.lower()
+    return {
+        "high": int(bands.eq("high").sum()),
+        "medium": int(bands.eq("medium").sum()),
+        "low": int(bands.eq("low").sum()),
+        "do_not_use": int(bands.eq("do_not_use").sum()),
+    }
+
+
+def combined_validation_logs(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    logs = []
+    if "issues" in frames and not frames["issues"].empty:
+        logs.append(frames["issues"].copy())
+    if "contradictions" in frames and not frames["contradictions"].empty:
+        logs.append(frames["contradictions"].copy())
+    if not logs:
+        return pd.DataFrame()
+    return pd.concat(logs, ignore_index=True, sort=False)
+
+
+def critical_high_validation_count(frames: dict[str, pd.DataFrame]) -> int:
+    logs = combined_validation_logs(frames)
+    if logs.empty or "severity" not in logs.columns:
+        return 0
+    severity = logs["severity"].fillna("").astype(str).str.lower()
+    return int(severity.isin(["critical", "high"]).sum())
+
+
+def source_scope_issue_count(frames: dict[str, pd.DataFrame]) -> int:
+    logs = combined_validation_logs(frames)
+    if logs.empty:
+        return 0
+    text = pd.Series([""] * len(logs), index=logs.index)
+    for column in ["field_name", "issue_type", "issue_description", "model_impact", "recommended_fix"]:
+        if column in logs.columns:
+            text = text + " " + logs[column].fillna("").astype(str)
+    return int(text.str.contains("source_scope|source scope|universe|44/54|coverage|definition", case=False, regex=True).sum())
+
+
+def confidence_display_table(confidence: pd.DataFrame) -> pd.DataFrame:
+    columns = ["zone_name", "data_confidence_band", "data_confidence_score", "confidence_reason"]
+    table = confidence[[column for column in columns if column in confidence.columns]].copy()
+    if "data_confidence_band" in table.columns:
+        table["data_confidence_band"] = table["data_confidence_band"].apply(
+            lambda value: visible_text(str(value).replace("_", " ").title(), "Not available")
+        )
+    if "data_confidence_score" in table.columns:
+        table["data_confidence_score"] = pd.to_numeric(table["data_confidence_score"], errors="coerce").round(3)
+    for column in table.columns:
+        if pd.api.types.is_object_dtype(table[column]) or pd.api.types.is_string_dtype(table[column]):
+            table[column] = table[column].apply(display_value)
+    return table.rename(
+        columns={
+            "zone_name": "Zone",
+            "data_confidence_band": "Confidence band",
+            "data_confidence_score": "Confidence score",
+            "confidence_reason": "Confidence reason",
+        }
+    )
+
+
+def high_priority_validation_table(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    validation_table = validation_display_table(frames)
+    if validation_table.empty or "Severity" not in validation_table.columns:
+        return validation_table
+    return validation_table[validation_table["Severity"].isin(["Blocking", "Material"])].copy()
+
+
+def audit_flags_table(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    if "audit_flags" in frames and not frames["audit_flags"].empty:
+        return friendly_dataframe(frames["audit_flags"])
+    if "audit" in frames and not frames["audit"].empty:
+        return friendly_dataframe(frames["audit"])
+    return pd.DataFrame()
+
+
+def render_case_review(
+    frames: dict[str, pd.DataFrame],
+    reason_codes: dict[str, str],
+    display_recommendations: pd.DataFrame,
+) -> None:
+    recommendations = frames["recommendations"]
+    if recommendations.empty:
+        st.info("No case-review records were generated by the current pipeline run.")
+        return
+
+    st.markdown("### Case Review")
+    st.caption(
+        "Human-review memo for one zone record. The screening output indicates a provisional review pathway; it does "
+        "not decide entitlement or set tax/fiscal treatment."
+    )
+
+    rec = case_review_selected_row(recommendations)
+    pathway = case_review_pathway(rec)
+    gates = case_review_gates(rec)
+    blockers = case_review_blockers(rec)
+    actions = case_review_next_actions(rec)
+
+    render_case_header_card(rec, pathway)
+
+    st.markdown("#### Review Pathway")
+    render_case_memo_card("Review pathway", pathway)
+    render_support_context(rec)
+
+    st.markdown("#### Why This Was Flagged")
+    why_text = display_memo_text(rec.get("why", "Human review required before fiscal, legal, calibration, or pilot use."))
+    render_case_memo_card("Basis for pathway", why_text)
+    caveats = []
+    if fiscal_validation_required(rec):
+        caveats.append("D5/FBR fiscal exposure validation required before calibration use.")
+    if legal_review_required(rec):
+        caveats.append("D4 legal review required before treatment classification.")
+    if additionality_caveat_required(rec):
+        caveats.append("Reported activity is not treated as proof of additionality or incentive effectiveness.")
+    if caveats:
+        st.markdown("##### Required caveats")
+        render_bullets(caveats)
+
+    st.markdown("#### Reason Codes")
+    render_reason_code_pills(rec.get("reason_codes"), reason_codes)
+
+    st.markdown("#### Open Gates")
+    render_bullets(gates)
+    if blockers:
+        with st.expander("Main blockers and data gaps", expanded=False):
+            render_bullets(blockers)
+
+    st.markdown("#### Next Action and Validation Owner")
+    n1, n2 = st.columns([0.66, 0.34])
+    with n1:
+        render_bullets(actions)
+    with n2:
+        output_card("Validation owner", display_value(rec.get("validator_owner"), "BOI / SEZA / FBR / Finance / legal team / REMIT"))
+        output_card("Human review", "Required")
+
+
+def render_data_confidence_mvp(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
+    st.markdown("### Data Confidence")
+    st.caption(
+        "This page identifies whether a zone record is usable for provisional screening, requires source-row "
+        "verification, or should be kept out of calibration use."
+    )
+
+    confidence = frames.get("confidence", pd.DataFrame())
+    band_counts = confidence_band_counts(confidence)
+    counts = validation_metric_counts(frames)
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        metric_card("High confidence", band_counts["high"], "Usable for provisional screening")
+    with c2:
+        metric_card("Medium confidence", band_counts["medium"], "Usable with caveats")
+    with c3:
+        metric_card("Low confidence", band_counts["low"], "More verification needed")
+    with c4:
+        metric_card("Do not use", band_counts["do_not_use"], "Keep out of calibration use")
+
+    c5, c6 = st.columns(2)
+    with c5:
+        metric_card("Critical/high validation flags", critical_high_validation_count(frames), "Blocking or material source checks")
+    with c6:
+        metric_card("Source-scope issues", source_scope_issue_count(frames), "Coverage, universe, or definition limits")
+
+    callout_card(
+        "Dataset scope note",
+        "Current demo uses 35 structured screening records; do not generalize to the full "
+        "44/54-zone universe without reconciliation.",
+    )
+
+    st.markdown("#### Confidence by Zone")
+    st.dataframe(confidence_display_table(confidence), width="stretch", hide_index=True)
+
+    st.markdown("#### Critical / High Validation Flags")
+    st.caption(
+        "Validation flags are not app errors. They identify fields requiring source verification before fiscal, legal, "
+        "calibration, or pilot use."
+    )
+    high_priority = high_priority_validation_table(frames)
+    st.dataframe(high_priority, width="stretch", hide_index=True)
+
+    st.markdown("#### Confidence Scoring Reference")
+    scoring = pd.DataFrame(
+        [
+            {"Component": "Source reliability", "Role": "Checks whether source lineage is present and credible."},
+            {"Component": "Completeness", "Role": "Checks critical fields needed for screening and validation."},
+            {"Component": "Internal consistency", "Role": "Checks acreage, status, and field-level logic within a record."},
+            {"Component": "Source and status consistency", "Role": "Checks the structured screening dataset, status fields, and coverage notes."},
+            {"Component": "Recency", "Role": "Checks whether current-period source notes are present."},
+        ]
+    )
+    banding = pd.DataFrame(
+        [
+            {"Band": "High", "Use": "Usable for screening."},
+            {"Band": "Medium", "Use": "Usable with caveats."},
+            {"Band": "Low", "Use": "More data required."},
+            {"Band": "Do not use for decision", "Use": "Source verification required before policy use."},
+        ]
+    )
+    s1, s2 = st.columns(2)
+    s1.dataframe(scoring, width="stretch", hide_index=True)
+    s2.dataframe(banding, width="stretch", hide_index=True)
+
+    with st.expander("Show full data-quality issue log", expanded=False):
+        st.dataframe(friendly_dataframe(frames.get("issues", pd.DataFrame())), width="stretch", hide_index=True)
+
+    with st.expander("Show cross-source/status conflicts", expanded=False):
+        st.caption("Source-scope and consistency flags.")
+        st.dataframe(friendly_dataframe(frames.get("contradictions", pd.DataFrame())), width="stretch", hide_index=True)
+
+    with st.expander("Show field completeness", expanded=False):
+        st.dataframe(friendly_dataframe(frames.get("field_completeness", pd.DataFrame())), width="stretch", hide_index=True)
+
+    audit_flags = audit_flags_table(frames)
+    if not audit_flags.empty:
+        with st.expander("Show audit flags", expanded=False):
+            st.dataframe(audit_flags, width="stretch", hide_index=True)
+
+    with st.expander("Audit trail / technical details", expanded=False):
+        st.metric("Fields with missing values", counts["fields_with_gaps"])
+        st.markdown("##### Source processing log")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {
+                        "Processing Step": "Load structured screening dataset",
+                        "Status": f"{summary['zone_records_loaded']} zone records loaded for screening.",
+                    },
+                    {
+                        "Processing Step": "Apply validation checks",
+                        "Status": f"{summary['data_quality_issue_count']} validation flags generated.",
+                    },
+                    {
+                        "Processing Step": "Check source and status validation flags",
+                        "Status": f"{summary['contradiction_count']} source-scope or consistency flags generated.",
+                    },
+                ]
+            ),
+            width="stretch",
+            hide_index=True,
+        )
+
+
+def render_export_memo(
+    frames: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+    reason_codes: dict[str, str],
+    display_recommendations: pd.DataFrame,
+) -> None:
+    st.markdown("### Export Memo")
+    callout_card(
+        "Memo export",
+        "Generate a short prototype screening note and CSV extracts for the live walkthrough.",
+    )
+
+    recommendations = frames["recommendations"]
+    cases = demo_case_catalog(recommendations)
+    if cases:
+        case_map = {str(case["key"]): case for case in cases}
+        valid_keys = list(case_map)
+        if st.session_state.get("demo_case_key") not in valid_keys:
+            st.session_state.demo_case_key = valid_keys[0]
+        st.selectbox(
+            "Memo case",
+            valid_keys,
+            key="demo_case_key",
+            format_func=lambda key: str(case_map[key]["anonymous_label"]),
+        )
+
+    case, selected_rec, _display_rec = selected_demo_context(frames, display_recommendations)
+    selected_file_token = safe_file_token(case.get("key") if case else selected_rec.get("zone_id", "selected_zone"))
+    export_display = demo_display_rows(display_recommendations, recommendations)
+    triage_export = executive_table(export_display)
+    validation_export = demo_scope_table(validation_display_table(frames), recommendations)
+    metadata = export_metadata(summary, selected_rec)
+
+    with st.container(border=True):
+        st.markdown("#### Source / Audit Metadata")
+        st.dataframe(pd.DataFrame([metadata]), width="stretch", hide_index=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.download_button(
+            "Export Executive Triage Table as CSV",
+            data=dataframe_to_csv_bytes(triage_export),
+            file_name="executive_triage_table.csv",
+            mime="text/csv",
+        )
+    with c2:
+        st.download_button(
+            "Export Validation Flags as CSV",
+            data=dataframe_to_csv_bytes(validation_export),
+            file_name="validation_flags.csv",
+            mime="text/csv",
+        )
+
+    st.markdown("#### Selected-Zone Memo")
+    if st.button("Generate selected-zone memo"):
+        st.session_state.export_selected_zone_id = str(selected_rec.get("zone_id", selected_file_token))
+        st.session_state.export_memo_markdown = selected_zone_memo(selected_rec, reason_codes, summary)
+        st.session_state.export_memo_txt = selected_zone_memo(selected_rec, reason_codes, summary, plain_text=True)
+
+    if st.session_state.get("export_memo_markdown"):
+        memo_markdown = st.session_state.export_memo_markdown
+        memo_txt = st.session_state.export_memo_txt
+        st.markdown("##### Export Preview")
+        with st.container(border=True):
+            st.markdown(memo_markdown)
+        m1, m2 = st.columns(2)
+        with m1:
+            st.download_button(
+                "Export Selected-Zone Explanation as Markdown",
+                data=memo_markdown.encode("utf-8"),
+                file_name=f"{selected_file_token}_prototype_screening_note.md",
+                mime="text/markdown",
+            )
+        with m2:
+            st.download_button(
+                "Export Selected-Zone Explanation as TXT",
+                data=memo_txt.encode("utf-8"),
+                file_name=f"{selected_file_token}_prototype_screening_note.txt",
+                mime="text/plain",
+            )
+    else:
+        callout_card("Export preview", "Select a case and generate the memo to preview the note before downloading.")
+
+    with st.expander("CSV preview tables", expanded=False):
+        st.markdown("##### Executive triage table")
+        st.dataframe(triage_export, width="stretch", hide_index=True)
+        st.markdown("##### Validation flags")
+        st.dataframe(validation_export, width="stretch", hide_index=True)
+
+
+def render_about_limitations(summary: dict[str, Any]) -> None:
+    st.markdown("### About / Limitations")
+    st.caption("Scope notes for presenting the prototype safely in a short walkthrough.")
+
+    with st.expander("Public demo posture", expanded=True):
+        st.write(f"**{DATA_PROFILE_LABEL}.** The public/demo build is for workflow demonstration.")
+        st.write(NON_DECISION_STATEMENT)
+    with st.expander("Scope and guardrails", expanded=False):
+        st.write(
+            "Any support-related output is provisional and subject to D4 legal review and D5/FBR/customs verification. "
+            "No final tax rates or incentive awards are calculated."
+        )
+    with st.expander("Dataset limits", expanded=False):
+        st.write(
+            "This MVP uses hypothetical synthetic zones for workflow demonstration. Do not treat demo screening "
+            "outputs as BOI, SEZA, FBR, Finance, legal, developer, or enterprise records."
+        )
+        st.write(REAL_USE_REQUIREMENTS)
+    with st.expander("Legal, fiscal, and validation requirements", expanded=False):
+        st.write(
+            "D4 legal review and D5/FBR validation are required before any policy use. Human review is required for "
+            "every output."
+        )
+        st.write(APP_CONFIG["additionality_note"])
+    with st.expander("What the prototype does not do", expanded=False):
+        st.write(
+            "The app is a decision-support layer around triage, validation, and memo export. It is not a legal opinion, "
+            "fiscal estimate, tax calculation, incentive clearance, or replacement for BOI, FBR, Finance Division, SEZA, "
+            "legal counsel, IMF review, programme review, or human review."
+        )
+
+    with st.expander("Run summary", expanded=False):
+        st.dataframe(pd.DataFrame([summary]), width="stretch", hide_index=True)
+
+
 def render_data_intake(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
     st.markdown("### Data Intake")
     st.caption(
@@ -2433,9 +3346,9 @@ def render_data_intake(frames: dict[str, pd.DataFrame], summary: dict[str, Any])
     c4.metric("Validation tables", "Created" if summary.get("placeholders_created") else "Present")
 
     note_card(
-        "Source package note",
+        "Structured dataset note",
         [
-            "The current source package is suitable for screening and demonstration. Exact row-level verification should use the original workbook and source documents before policy use.",
+            "The current structured screening dataset is suitable for workflow demonstration. Exact row-level verification should use validated source documents before policy use.",
             "The current structured screening dataset covers 35 detected zone profile records and 35 indicator records based on the source digest.",
             "Legal, enterprise compliance, and fiscal exposure fields remain pending D4/D5 validation.",
         ],
@@ -2516,7 +3429,7 @@ def render_data_intake(frames: dict[str, pd.DataFrame], summary: dict[str, Any])
                         "Decision Connection": "D4 legal review required before treatment screening or phase-out analysis.",
                     },
                     {
-                        "Assumption": "Current source package is a 35-zone structured screening dataset",
+                        "Assumption": "Current demo is a 35-zone structured screening dataset",
                         "Decision Connection": "Not the final reconciled 44/54-zone universe; denominators and coverage need reconciliation.",
                     },
                     {
@@ -2534,7 +3447,7 @@ def render_data_intake(frames: dict[str, pd.DataFrame], summary: dict[str, Any])
 def render_data_validation(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
     st.markdown("### Data Validation & Source Confidence")
     st.warning(
-        "The current source package is suitable for screening and demonstration. Exact row-level verification should use "
+        "The current structured screening dataset is suitable for screening and demonstration. Exact row-level verification should use "
         "the original workbook and source documents before policy use."
     )
     st.caption(
@@ -2582,7 +3495,7 @@ def render_data_validation(frames: dict[str, pd.DataFrame], summary: dict[str, A
             {"Component": "Source reliability", "Use in Score": "Checks whether source lineage is present and credible."},
             {"Component": "Completeness", "Use in Score": "Checks critical fields needed for screening and validation."},
             {"Component": "Internal consistency", "Use in Score": "Checks acreage, status, and field-level logic within a record."},
-            {"Component": "Cross-source consistency", "Use in Score": "Checks conflicts across source package, status fields, and coverage notes."},
+            {"Component": "Cross-source consistency", "Use in Score": "Checks conflicts across the structured screening dataset, status fields, and coverage notes."},
             {"Component": "Recency", "Use in Score": "Checks whether current-period source notes are present."},
         ]
     )
@@ -2612,7 +3525,7 @@ def render_data_validation(frames: dict[str, pd.DataFrame], summary: dict[str, A
             processing_log = pd.DataFrame(
                 [
                     {
-                        "Processing Step": "Load consolidated SEZ source package",
+                        "Processing Step": "Load structured screening dataset",
                         "Status": f"{summary['zone_records_loaded']} zone records loaded for screening.",
                     },
                     {
@@ -3036,7 +3949,7 @@ def render_scenario_settings(frames: dict[str, pd.DataFrame], summary: dict[str,
     if demo_mode_active():
         case = current_demo_case(frames["recommendations"])
         selected_zone_id = case.get("zone_id") if case else frames["zones"]["zone_id"].iloc[0]
-        st.info(f"Demo Mode sensitivity is using: {case['label'] if case else 'selected demo case'}")
+        st.info(f"Synthetic demo sensitivity is using: {case['label'] if case else 'selected demo case'}")
     else:
         zones = frames["zones"].copy()
         zone_lookup = zones[["zone_id", "zone_name", "province"]].drop_duplicates()
@@ -3068,14 +3981,14 @@ def safe_file_token(value: object, default: str = "selected_zone") -> str:
 def export_metadata(summary: dict[str, Any], rec: pd.Series | None = None) -> dict[str, str]:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     run_id = datetime.now(timezone.utc).strftime(f"{APP_VERSION}-%Y%m%d%H%M%S")
-    source = "Consolidated SEZ source package"
+    source = DATASET_BASIS_LABEL
     if rec is not None:
         source = source_reference(rec)
     return {
-        "Data mode": str(st.session_state.get("data_mode", "Consolidated source package")),
+        "Dataset view": "Synthetic demo dataset",
         "Ruleset version": f"{APP_VERSION} / {APP_CONFIG['reason_codes_file'].stem}",
-        "Scenario preset": str(st.session_state.get("policy_posture_preset", "Broad diagnostic screen")),
-        "Source package": source,
+        "Rules posture": str(st.session_state.get("policy_posture_preset", "Broad diagnostic screen")),
+        "Dataset basis": source,
         "Timestamp / run ID": f"{timestamp} / {run_id}",
     }
 
@@ -3188,7 +4101,7 @@ def render_export(
         selected_rec = recommendations[recommendations["zone_id"].astype(str) == str(selected_zone_id)].iloc[0]
         selected_rec = anonymized_demo_record(selected_rec, case)
         selected_file_source = case.get("key") if case else "demo_case"
-        st.info(f"Demo Mode memo export is using: {case['label'] if case else 'selected demo case'}")
+        st.info(f"Synthetic demo memo export is using: {case['label'] if case else 'selected demo case'}")
     else:
         zone_lookup = recommendations[["zone_id", "zone_name", "province"]].drop_duplicates().copy()
         zone_lookup["Display"] = zone_lookup.apply(
@@ -3237,7 +4150,7 @@ def render_export(
 
     st.markdown("### Selected-Zone Memo")
     st.caption("Generate a concise screening note that can be reviewed before download.")
-    if st.button("Generate selected-zone memo", type="primary"):
+    if st.button("Generate selected-zone memo"):
         st.session_state.export_selected_zone_id = str(selected_zone_id)
         st.session_state.export_memo_markdown = selected_zone_memo(selected_rec, reason_codes, summary)
         st.session_state.export_memo_txt = selected_zone_memo(selected_rec, reason_codes, summary, plain_text=True)
@@ -3316,21 +4229,17 @@ display_recommendations = recommendation_view(recommendations)
 
 page = render_header(recommendations, summary)
 
-if page == "Executive View":
+if page == "Executive Triage":
     render_executive_view(frames, summary, display_recommendations)
-elif page == "Zone Explorer":
-    render_zone_explorer(frames, display_recommendations)
-elif page == "Recommendation Engine":
-    render_recommendation_engine(frames, reason_codes, recommendations, display_recommendations)
-elif page == "Data Intake":
-    render_data_intake(frames, summary)
-elif page == "Data Validation & Source Confidence":
-    render_data_validation(frames, summary)
-elif page == "KPI Assurance":
-    render_kpi_assurance(frames)
-elif page == "Scenario Settings":
+elif page == "Case Review":
+    render_case_review(frames, reason_codes, display_recommendations)
+elif page == "Data Confidence":
+    render_data_confidence_mvp(frames, summary)
+elif page == "Export Memo":
+    render_export_memo(frames, summary, reason_codes, display_recommendations)
+elif page == "About / Limitations":
+    render_about_limitations(summary)
+elif page == "Scenario Settings" and SHOW_ADVANCED_SCENARIOS:
     render_scenario_settings(frames, summary)
-elif page == "Export":
-    render_export(frames, summary, reason_codes, display_recommendations)
 
 render_footer()

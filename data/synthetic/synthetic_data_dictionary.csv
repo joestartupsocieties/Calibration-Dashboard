@@ -1,0 +1,14 @@
+field_name,description
+zone_id,Synthetic stable zone ID for demo joins.
+zone_name,Fictional/hypothetical zone name. No real SEZ name.
+legal_risk_level,Low/medium/high/unknown D4 legal/contract risk classification.
+developer_compliance_status,Synthetic developer compliance status used by current engine.
+enterprise_compliance_status,Synthetic enterprise compliance status used by current engine.
+fiscal_exposure_level,Low/medium/high/unknown D5/FBR fiscal exposure band.
+fiscal_data_status,Missing/preliminary/validated/verified status for D5 fiscal file.
+additionality_confidence,Synthetic assessment of whether SEZ treatment plausibly caused activity.
+counterfactual_status,Whether comparator/baseline has been assessed.
+incentive_effectiveness_confidence,Whether activity appears to be linked to incentive regime.
+net_fiscal_economic_impact,Synthetic net fiscal/economic impact assessment.
+pilot_readiness_score,"Synthetic composite for D7 pilot-readiness discussion, not used directly by current engine."
+demo_expected_pathway,Expected demo route. Useful for UI/case selection but not relied on as model output.
