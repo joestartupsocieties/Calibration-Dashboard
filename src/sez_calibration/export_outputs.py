@@ -139,7 +139,7 @@ def build_summary(
             "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
             "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
             "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
-            "No final tax rates or incentive awards are calculated.",
+            "No tax rates or incentive awards are calculated.",
         ],
     }
 
@@ -160,7 +160,7 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
                 "Recommendations are provisional and for demonstration only.",
                 "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
                 "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
-                "No final tax rates or incentive awards are calculated.",
+                "No tax rates or incentive awards are calculated.",
                 "Human review is mandatory.",
             ]
         }

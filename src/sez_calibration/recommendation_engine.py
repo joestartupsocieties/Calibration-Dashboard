@@ -33,6 +33,8 @@ RECOMMENDATION_COLUMNS = [
 ]
 
 LEGAL_FISCAL_REVIEW_CLAUSE = "subject to D4 legal review and D5 fiscal verification"
+TEMPORARY_SUPPORT_CLAUSE = "any cost-based support must be temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035"
+BAND_RANK = {"do_not_use": 0, "low": 1, "medium": 2, "high": 3}
 
 
 def load_reason_codes(path: Path) -> dict[str, str]:
@@ -85,23 +87,23 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         gates.append("high_legal_risk")
         codes.extend(["R01", "R02", "R12"])
     elif developer_compliance == "non_compliant":
-        treatment = "Sanction/cure review before support"
+        treatment = f"Sanction/cure review before support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("developer_non_compliant")
-        codes.extend(["R03", "R15", "R12"])
+        codes.extend(["R03", "R15", "R12", "R16", "R17"])
     elif activity == "vacant_or_speculative":
-        treatment = "No new fiscal support; enforcement or land-use review"
+        treatment = f"No new fiscal support; enforcement or land-use review; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("vacant_or_speculative_activity")
-        codes.extend(["R07", "R13", "R15"])
+        codes.extend(["R07", "R13", "R15", "R16", "R17"])
     elif activity == "allotted_but_inactive":
-        treatment = "No new fiscal support; non-fiscal facilitation or cure plan only"
+        treatment = f"No new fiscal support; non-fiscal facilitation or cure plan only; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("allotted_but_inactive_activity")
-        codes.extend(["R06", "R13", "R14"])
+        codes.extend(["R06", "R13", "R14", "R16", "R17"])
     elif activity == "moving_toward_production":
-        treatment = "Possible transition candidate; legal and fiscal verification required"
+        treatment = f"Possible transition candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
         pilot = band == "high" and legal_risk in {"low", "medium"}
         codes.extend(["R05", "R09", "R10", "R16", "R17"])
     elif activity == "operating_productive":
-        treatment = "Possible pilot screen candidate pending D4 legal review and D5 fiscal verification"
+        treatment = f"Possible pilot screen candidate pending D4 legal review and D5 fiscal verification; {TEMPORARY_SUPPORT_CLAUSE}"
         pilot = band in {"medium", "high"} and legal_risk != "high"
         codes.extend(["R04", "R10", "R16", "R17"])
         if fiscal_exposure == "unknown" or fiscal_confidence == "missing":
@@ -126,6 +128,12 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         pilot = False
         gates.append("scenario_confidence_threshold")
         codes.extend(["R08", "R12"])
+    minimum_band = clean_text(scenario.get("minimum_data_confidence_band_for_pilot")).lower() or "medium"
+    if _band_rank(band) < _band_rank(minimum_band):
+        pilot = False
+        if activity in {"operating_productive", "moving_toward_production"}:
+            gates.append("scenario_minimum_confidence_band")
+            codes.extend(["R08", "R12"])
     if to_bool(scenario.get("require_legal_low_risk_for_pilot")) and legal_risk != "low":
         pilot = False
         if activity in {"operating_productive", "moving_toward_production"}:
@@ -137,9 +145,16 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
             gates.append("scenario_fiscal_data_required")
             codes.append("R09")
     if scenario.get("include_construction_stage_transition_candidates") is False and activity == "moving_toward_production":
-        treatment = "Construction-stage transition candidates excluded by scenario controls"
+        treatment = "Human review required"
         pilot = False
         gates.append("scenario_construction_excluded")
+        codes.append("R12")
+    if to_bool(scenario.get("treat_unknown_developer_compliance_as_blocker")) and developer_compliance == "unknown":
+        pilot = False
+        gates.append("scenario_unknown_developer_compliance_blocker")
+        codes.extend(["R03", "R12", "R16", "R17"])
+        if activity in {"operating_productive", "moving_toward_production"} and band != "do_not_use" and legal_risk != "high":
+            treatment = f"Developer compliance verification required before support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
 
     codes = _unique(codes)
     if len(codes) < 2:
@@ -181,6 +196,10 @@ def _unique(values: list[str]) -> list[str]:
         if value and value not in out:
             out.append(value)
     return out
+
+
+def _band_rank(band: str) -> int:
+    return BAND_RANK.get(clean_text(band).lower(), 0)
 
 
 def _has_infrastructure_constraint(row: pd.Series) -> bool:
@@ -227,5 +246,6 @@ def _next_actions(data_action: str, legal_action: str, fbr_action: str) -> str:
             legal_action,
             fbr_action,
             "Subject to D4 legal review and D5 fiscal verification.",
+            "Any cost-based support must be temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
         ]
     )

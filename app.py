@@ -16,6 +16,30 @@ from sez_calibration.recommendation_engine import load_reason_codes  # noqa: E40
 
 
 UI_CACHE_VERSION = "v0.5-lite-five-page-ui-2026-07-08"
+CONFIDENCE_BANDS = ["medium", "high"]
+POSTURE_DEFAULTS = {
+    "Screening Mode": {
+        "require_legal_low_risk_for_pilot": False,
+        "require_fiscal_data_for_pilot": False,
+        "include_construction_stage_transition_candidates": True,
+        "minimum_data_confidence_band_for_pilot": "medium",
+        "treat_unknown_developer_compliance_as_blocker": False,
+    },
+    "Conservative IMF Mode": {
+        "require_legal_low_risk_for_pilot": True,
+        "require_fiscal_data_for_pilot": True,
+        "include_construction_stage_transition_candidates": False,
+        "minimum_data_confidence_band_for_pilot": "high",
+        "treat_unknown_developer_compliance_as_blocker": True,
+    },
+    "Exploratory Pilot Mode": {
+        "require_legal_low_risk_for_pilot": False,
+        "require_fiscal_data_for_pilot": False,
+        "include_construction_stage_transition_candidates": True,
+        "minimum_data_confidence_band_for_pilot": "medium",
+        "treat_unknown_developer_compliance_as_blocker": False,
+    },
+}
 
 st.set_page_config(
     page_title="SEZ Zone Triage and Calibration Support MVP",
@@ -24,9 +48,57 @@ st.set_page_config(
 
 
 @st.cache_data(show_spinner=False)
-def load_demo_outputs(cache_version: str) -> dict[str, object]:
+def load_demo_outputs(cache_version: str, scenario_items: tuple[tuple[str, object], ...]) -> dict[str, object]:
     _ = cache_version
-    return run_pipeline(ROOT, write_outputs=True)
+    return run_pipeline(ROOT, scenario=dict(scenario_items), write_outputs=True)
+
+
+def model_settings_from_sidebar() -> dict[str, object]:
+    st.sidebar.subheader("Advanced Model Settings")
+    preset = st.sidebar.selectbox(
+        "Policy posture preset",
+        list(POSTURE_DEFAULTS),
+        index=0,
+    )
+    defaults = POSTURE_DEFAULTS[preset]
+    key_prefix = preset.lower().replace(" ", "_")
+
+    require_legal_low = st.sidebar.checkbox(
+        "Only show low-legal-risk zones as pilot screen candidates",
+        value=defaults["require_legal_low_risk_for_pilot"],
+        key=f"{key_prefix}_legal_low",
+    )
+    require_fiscal = st.sidebar.checkbox(
+        "Require D5 fiscal data before pilot screening",
+        value=defaults["require_fiscal_data_for_pilot"],
+        key=f"{key_prefix}_fiscal_required",
+    )
+    include_construction = st.sidebar.checkbox(
+        "Include construction-stage zones as transition candidates",
+        value=defaults["include_construction_stage_transition_candidates"],
+        key=f"{key_prefix}_include_construction",
+    )
+    minimum_band = st.sidebar.selectbox(
+        "Minimum data-confidence band for pilot screen",
+        CONFIDENCE_BANDS,
+        index=CONFIDENCE_BANDS.index(str(defaults["minimum_data_confidence_band_for_pilot"])),
+        key=f"{key_prefix}_min_band",
+    )
+    unknown_compliance_blocker = st.sidebar.checkbox(
+        "Treat unknown developer compliance as blocker",
+        value=defaults["treat_unknown_developer_compliance_as_blocker"],
+        key=f"{key_prefix}_unknown_compliance",
+    )
+    st.sidebar.caption("These controls are demo assumptions only. They do not represent final policy.")
+
+    return {
+        "policy_posture_preset": preset,
+        "require_legal_low_risk_for_pilot": require_legal_low,
+        "require_fiscal_data_for_pilot": require_fiscal,
+        "include_construction_stage_transition_candidates": include_construction,
+        "minimum_data_confidence_band_for_pilot": minimum_band,
+        "treat_unknown_developer_compliance_as_blocker": unknown_compliance_blocker,
+    }
 
 
 def filtered_options(series: pd.Series) -> list[str]:
@@ -58,7 +130,8 @@ def review_count(recommendations: pd.DataFrame) -> int:
     return int(review_text.str.contains("legal|fbr|fiscal|customs|d4|d5", regex=True).sum())
 
 
-result = load_demo_outputs(UI_CACHE_VERSION)
+model_settings = model_settings_from_sidebar()
+result = load_demo_outputs(UI_CACHE_VERSION, tuple(sorted(model_settings.items())))
 frames: dict[str, pd.DataFrame] = result["frames"]
 summary: dict[str, object] = result["summary"]
 reason_codes = load_reason_codes(ROOT / "config" / "reason_codes_v0_5_lite.yaml")
@@ -155,7 +228,38 @@ elif page == "Zone Explorer":
 
     selected = st.selectbox("Selected zone", filtered["zone_name"].tolist() if not filtered.empty else [])
     if selected:
-        detail = filtered[filtered["zone_name"] == selected].iloc[0].dropna()
+        detail_columns = [
+            "zone_id",
+            "zone_name",
+            "province",
+            "developer_name",
+            "developer_mode",
+            "zone_type",
+            "operational_status",
+            "total_area_acres",
+            "industrial_area_acres",
+            "allotted_area_acres",
+            "vacant_area_acres",
+            "under_construction_area_acres",
+            "under_production_area_acres",
+            "unsold_area_acres",
+            "number_allottees",
+            "electricity_status",
+            "gas_status",
+            "water_status",
+            "wastewater_status",
+            "roads_status",
+            "data_confidence_score",
+            "data_confidence_band",
+            "activity_category",
+            "recommended_treatment",
+            "hard_gates_triggered",
+            "reason_codes",
+            "source_file",
+            "source_row",
+        ]
+        available_detail_columns = [column for column in detail_columns if column in filtered.columns]
+        detail = filtered[filtered["zone_name"] == selected].iloc[0][available_detail_columns].dropna()
         st.subheader("Selected-zone Detail")
         st.json(detail.to_dict())
 
