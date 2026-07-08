@@ -81,9 +81,9 @@ Real policy use requires validated source inputs, including:
 ## Demo Script
 
 1. Start on **Executive Triage**. Explain that the prototype organizes demo-zone records into provisional review pathways; it does not approve incentives or calculate tax/fiscal impacts.
-2. Open **Case Review**. Show one selected case as a human-review memo with review pathway, reason codes, open gates, next action, validation owner, and human review required.
+2. Open **Case Review**. Show one selected case as a human-review screening note with review pathway, reason codes, open gates, next action, validation owner, and human review required.
 3. Open **Data Confidence**. Explain how the app preserves uncertainty, validation flags, source-scope limits, and synthetic-data caveats instead of treating the dataset as complete.
-4. Open **Export Memo**. Generate a selected-zone memo and point out the CSV/memo outputs for review or follow-up work.
+4. Open **Export**. Generate structured CSV/Excel outputs and a selected-zone screening note for review or follow-up work.
 5. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, and no final legal, fiscal, tax, or incentive decision.
 
 ## Outputs

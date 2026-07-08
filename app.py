@@ -62,7 +62,7 @@ PAGES = [
     "Executive Triage",
     "Case Review",
     "Data Confidence",
-    "Export Memo",
+    "Export",
     "About / Limitations",
 ]
 if SHOW_ADVANCED_SCENARIOS:
@@ -814,7 +814,7 @@ def initialize_state() -> None:
         "Data Validation": "Data Confidence",
         "Data Validation & Source Confidence": "Data Confidence",
         "KPI Assurance": "Data Confidence",
-        "Export": "Export Memo",
+        "Export Memo": "Export",
     }
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Executive Triage"
@@ -3212,10 +3212,10 @@ def render_export_memo(
     reason_codes: dict[str, str],
     display_recommendations: pd.DataFrame,
 ) -> None:
-    st.markdown("### Export Memo")
+    st.markdown("### Work-Product Exports")
     callout_card(
-        "Memo export",
-        "Generate a short prototype screening note and CSV extracts for the live walkthrough.",
+        "Structured outputs",
+        "Generate CSV extracts and a selected-zone screening note for the live walkthrough.",
     )
 
     recommendations = frames["recommendations"]
@@ -3226,7 +3226,7 @@ def render_export_memo(
         if st.session_state.get("demo_case_key") not in valid_keys:
             st.session_state.demo_case_key = valid_keys[0]
         st.selectbox(
-            "Memo case",
+            "Screening note case",
             valid_keys,
             key="demo_case_key",
             format_func=lambda key: str(case_map[key]["anonymous_label"]),
@@ -3259,8 +3259,8 @@ def render_export_memo(
             mime="text/csv",
         )
 
-    st.markdown("#### Selected-Zone Memo")
-    if st.button("Generate selected-zone memo"):
+    st.markdown("#### Selected-Zone Screening Note")
+    if st.button("Generate selected-zone screening note"):
         st.session_state.export_selected_zone_id = str(selected_rec.get("zone_id", selected_file_token))
         st.session_state.export_memo_markdown = selected_zone_memo(selected_rec, reason_codes, summary)
         st.session_state.export_memo_txt = selected_zone_memo(selected_rec, reason_codes, summary, plain_text=True)
@@ -3287,7 +3287,7 @@ def render_export_memo(
                 mime="text/plain",
             )
     else:
-        callout_card("Export preview", "Select a case and generate the memo to preview the note before downloading.")
+        callout_card("Export preview", "Select a case and generate the screening note to preview it before downloading.")
 
     with st.expander("CSV preview tables", expanded=False):
         st.markdown("##### Executive triage table")
@@ -3322,7 +3322,7 @@ def render_about_limitations(summary: dict[str, Any]) -> None:
         st.write(APP_CONFIG["additionality_note"])
     with st.expander("What the prototype does not do", expanded=False):
         st.write(
-            "The app is a decision-support layer around triage, validation, and memo export. It is not a legal opinion, "
+            "The app is a decision-support layer around triage, validation, and structured exports. It is not a legal opinion, "
             "fiscal estimate, tax calculation, incentive clearance, or replacement for BOI, FBR, Finance Division, SEZA, "
             "legal counsel, IMF review, programme review, or human review."
         )
@@ -4235,7 +4235,7 @@ elif page == "Case Review":
     render_case_review(frames, reason_codes, display_recommendations)
 elif page == "Data Confidence":
     render_data_confidence_mvp(frames, summary)
-elif page == "Export Memo":
+elif page == "Export":
     render_export_memo(frames, summary, reason_codes, display_recommendations)
 elif page == "About / Limitations":
     render_about_limitations(summary)
