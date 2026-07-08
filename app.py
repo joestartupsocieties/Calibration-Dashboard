@@ -16,7 +16,7 @@ from sez_calibration.recommendation_engine import load_reason_codes  # noqa: E40
 
 
 st.set_page_config(
-    page_title="Explainable SEZ Incentive Calibration Framework - Demo MVP",
+    page_title="SEZ Zone Triage and Calibration Support MVP",
     layout="wide",
 )
 
@@ -51,30 +51,37 @@ scenario = scenario_from_sidebar()
 result = load_demo_outputs(tuple(sorted(scenario.items())))
 frames: dict[str, pd.DataFrame] = result["frames"]
 summary: dict[str, object] = result["summary"]
-reason_codes = load_reason_codes(ROOT / "config" / "reason_codes_v0_4.yaml")
+reason_codes = load_reason_codes(ROOT / "config" / "reason_codes_v0_5_lite.yaml")
 
 pages = [
     "Home",
     "Zone Explorer",
     "Data Quality",
-    "Legal / Compliance Screen",
+    "Legal / Fiscal Placeholder Gates",
     "Recommendation Engine",
     "Scenario Controls - MVP placeholder",
     "Export",
 ]
 page = st.sidebar.radio("Page", pages)
 
-st.title("Explainable SEZ Incentive Calibration Framework â€” Demo MVP")
-st.caption("v0.4 - Zone Triage and Explainable Recommendation Engine")
+st.title("SEZ Zone Triage and Calibration Support MVP")
+st.caption("v0.5-lite - demo only")
 
 if page == "Home":
-    st.warning("Recommendations are provisional screening outputs. They do not approve incentives, set tax rates, or replace BOI, FBR, SEZA, Finance Division, Law Division, IMF, fiscal modeller, or legal counsel review.")
-    st.write("The current normalized dataset covers 35 detected zone profile records and 35 normalized indicator records based on the source digest. Exact row-level verification should use the original workbook.")
+    st.warning(
+        "Demo only. No final legal, fiscal, or incentive decisions. No final tax rates. "
+        "Any support-related output is subject to D4 legal review and D5 fiscal verification. "
+        "Any cost-based support is temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035."
+    )
+    st.write(
+        "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe. "
+        "Exact row-level verification should use the original workbook."
+    )
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Zones loaded", summary["zone_records_loaded"])
     c2.metric("Data-quality issues", summary["data_quality_issue_count"])
     c3.metric("Contradictions", summary["contradiction_count"])
-    c4.metric("Pilot screen candidates", summary["possible_pilot_screen_candidates"])
+    c4.metric("Support screen candidates", summary["possible_pilot_screen_candidates"])
     c5.metric("More data required", summary["more_data_required"])
     st.dataframe(frames["recommendations"], width="stretch", hide_index=True)
 
@@ -112,25 +119,29 @@ elif page == "Data Quality":
     st.subheader("Confidence Score Distribution")
     st.bar_chart(frames["confidence"]["data_confidence_band"].value_counts())
 
-elif page == "Legal / Compliance Screen":
-    st.info("Legal/compliance values are placeholders pending D4 legal review. Edits here are demo overrides only.")
-    uploaded = st.file_uploader("Upload replacement legal_compliance_placeholder.csv", type=["csv"])
+elif page == "Legal / Fiscal Placeholder Gates":
+    st.info("Legal/fiscal values are placeholders pending D4 legal review and D5 fiscal verification. Edits here are demo overrides only.")
+    uploaded = st.file_uploader("Upload replacement legal_fiscal_placeholders.csv", type=["csv"])
     if uploaded is not None:
-        legal = pd.read_csv(uploaded)
+        placeholders = pd.read_csv(uploaded)
     else:
-        legal = frames["legal"]
+        placeholders = frames["legal"].merge(frames["fiscal"], on=["zone_id", "zone_name"], how="left")
+        if "notes" not in placeholders.columns:
+            placeholders["notes"] = "Legal/fiscal placeholders pending D4 legal review and D5 fiscal verification."
     edited = st.data_editor(
-        legal,
+        placeholders,
         width="stretch",
         hide_index=True,
         column_config={
             "legal_risk_level": st.column_config.SelectboxColumn(options=["low", "medium", "high", "unknown"]),
             "developer_compliance_status": st.column_config.SelectboxColumn(options=["compliant", "partial", "non_compliant", "unknown"]),
             "legal_review_required": st.column_config.CheckboxColumn(),
+            "fiscal_exposure_level": st.column_config.SelectboxColumn(options=["low", "medium", "high", "unknown"]),
+            "fiscal_data_status": st.column_config.SelectboxColumn(options=["verified", "partial", "missing"]),
         },
     )
-    if st.button("Apply demo legal overrides"):
-        edited.to_csv(ROOT / "data" / "legal_compliance_placeholder.csv", index=False, encoding="utf-8")
+    if st.button("Apply demo placeholder overrides"):
+        edited.to_csv(ROOT / "data" / "legal_fiscal_placeholders.csv", index=False, encoding="utf-8")
         st.cache_data.clear()
         rerun()
 
@@ -143,7 +154,7 @@ elif page == "Recommendation Engine":
     c1, c2, c3 = st.columns(3)
     c1.metric("Confidence", f"{rec['data_confidence_score']:.2f}", rec["data_confidence_band"])
     c2.metric("Activity", rec["activity_category"])
-    c3.metric("Pilot screen", "Yes" if rec["pilot_eligible_flag"] else "No")
+    c3.metric("Support screen", "Yes" if rec["pilot_eligible_flag"] else "No")
     st.write(explanation["plain_english_explanation"])
     st.write("Hard gates:", rec["hard_gates_triggered"])
     st.write("Next actions:", explanation["next_actions"])

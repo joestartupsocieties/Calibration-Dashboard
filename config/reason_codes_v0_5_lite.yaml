@@ -1,4 +1,4 @@
-R01: Legal review required
+R01: D4 legal review required
 R02: Existing legal or contractual commitment may restrict phase-out
 R03: Developer compliance issue or developer compliance unknown
 R04: Reported production activity
@@ -7,12 +7,12 @@ R06: Allotment-only movement / weak evidence of productive use
 R07: High vacant or unsold land share
 R08: Low data confidence
 R09: Fiscal exposure missing; D5/FBR/customs verification required
-R10: Possible pilot screen candidate
+R10: Possible demo screen candidate only; subject to D4 legal review and D5 fiscal verification
 R11: Infrastructure constraint may explain underperformance
 R12: Human review required
 R13: New fiscal support cannot be recommended from available data
-R14: Non-fiscal support only may be more appropriate
+R14: Non-fiscal facilitation or cure planning may be more appropriate
 R15: Sanction/cure review may be required
-R16: Cost-based support can only be considered after legal and fiscal gates
-R17: Data is sufficient for screening but not final decision
+R16: Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035
+R17: Data is sufficient for screening but not final legal, fiscal, or incentive decisions
 R18: Zone universe or source-scope mismatch affects comparability

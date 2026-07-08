@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sez_calibration.recommendation_engine import run_recommendation_engine
 
@@ -34,7 +39,7 @@ def base_frames(
                 "zone_id": "Z1",
                 "zone_name": "Zone",
                 "fiscal_exposure_level": fiscal_exposure,
-                "fiscal_data_confidence": fiscal_confidence,
+                "fiscal_data_status": fiscal_confidence,
             }
         ]
     )
@@ -59,14 +64,14 @@ def test_low_data_confidence_triggers_more_data_required() -> None:
 
 def test_non_compliant_developer_triggers_sanction_cure() -> None:
     result = rec(developer_status="non_compliant")
-    assert result["recommended_treatment"] == "Sanction/cure review before support"
+    assert result["recommended_treatment"] == "Sanction/cure review before any support; subject to D4 legal review and D5 fiscal verification"
     assert "R15" in result["reason_codes"]
 
 
 def test_productive_missing_fiscal_does_not_produce_final_eligibility() -> None:
     result = rec(activity="operating_productive", fiscal_exposure="unknown", fiscal_confidence="missing")
     assert "final" not in result["recommended_treatment"].lower()
-    assert "pending D4 legal and D5 fiscal review" in result["recommended_treatment"]
+    assert "subject to D4 legal review and D5 fiscal verification" in result["recommended_treatment"]
 
 
 def test_every_recommendation_has_reason_codes() -> None:

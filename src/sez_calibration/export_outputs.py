@@ -9,8 +9,8 @@ from .classify_activity import classify_activity
 from .confidence import calculate_confidence_scores
 from .data_quality import run_data_quality_checks
 from .explanations import build_recommendation_explanations
-from .ingest import load_zone_data
-from .legal_compliance import ensure_placeholder_tables
+from .ingest import load_zone_data_with_metadata
+from .legal_compliance import ensure_placeholder_tables_with_metadata
 from .recommendation_engine import load_reason_codes, run_recommendation_engine
 from .utils import PROJECT_ROOT, ensure_dir, write_csv, write_json
 
@@ -38,16 +38,19 @@ def run_pipeline(
     config_dir = ensure_dir(root / "config")
     output_dir = ensure_dir(root / "outputs")
 
-    zones = load_zone_data(data_dir)
-    legal, fiscal = ensure_placeholder_tables(zones, data_dir)
+    zones, ingest_metadata = load_zone_data_with_metadata(data_dir)
+    legal, fiscal, placeholder_metadata = ensure_placeholder_tables_with_metadata(zones, data_dir)
     issues, contradictions, field_completeness = run_data_quality_checks(zones)
-    confidence = calculate_confidence_scores(zones, issues)
+    consistency_inputs = pd.concat([issues, contradictions], ignore_index=True)
+    confidence = calculate_confidence_scores(zones, consistency_inputs)
     activity = classify_activity(zones)
     recommendations = run_recommendation_engine(zones, confidence, activity, legal, fiscal, issues, scenario)
-    reason_codes = load_reason_codes(config_dir / "reason_codes_v0_4.yaml")
+    reason_codes = load_reason_codes(config_dir / "reason_codes_v0_5_lite.yaml")
     explanations = build_recommendation_explanations(recommendations, reason_codes)
     audit_flags = build_audit_flags(issues, contradictions, recommendations)
     summary = build_summary(zones, issues, contradictions, confidence, activity, recommendations)
+    summary.update(ingest_metadata)
+    summary.update(placeholder_metadata)
 
     frames = {
         "zones": zones,
@@ -111,11 +114,14 @@ def build_summary(
     recommendations: pd.DataFrame,
 ) -> dict[str, Any]:
     return {
-        "version": "v0.4",
-        "title": "v0.4 - Zone Triage and Explainable Recommendation Engine",
+        "version": "v0.5-lite",
+        "title": "v0.5-lite - SEZ Zone Triage and Calibration Support MVP",
         "zone_records_loaded": int(len(zones)),
         "detected_zone_profile_records_from_source_digest": 35,
         "normalized_indicator_records_from_source_digest": 35,
+        "demo_data_used": False,
+        "demo_data_created": False,
+        "placeholders_created": False,
         "dataset_scope_note": "The source digest reports 35 detected zone profile records and 35 normalized indicator records. Exact row-level verification should use the original workbook.",
         "data_quality_issue_count": int(len(issues)),
         "contradiction_count": int(len(contradictions)),
@@ -130,7 +136,9 @@ def build_summary(
             "Recommendations are provisional and demo-only.",
             "Legal fields are placeholders pending D4 legal review.",
             "Fiscal fields are placeholders pending D5/FBR/customs verification.",
-            "The 35-zone normalized dataset should not be treated as the full 44/54-zone universe.",
+            "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
+            "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
+            "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
             "No final tax rates or incentive awards are calculated.",
         ],
     }
@@ -147,9 +155,11 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
                 "Fiscal exposure fields are placeholders pending D5/FBR/customs verification.",
                 "Enterprise and plot-level data are not yet fully loaded.",
                 "The normalized dataset covers 35 detected zone profile records and 35 normalized indicator records based on the source digest.",
-                "The 35-zone normalized dataset does not equal the full 44/54-zone universe.",
+                "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
                 "Exact row-level verification should use the original workbook.",
                 "Recommendations are provisional and for demonstration only.",
+                "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
+                "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
                 "No final tax rates or incentive awards are calculated.",
                 "Human review is mandatory.",
             ]

@@ -31,6 +31,9 @@ RECOMMENDATION_COLUMNS = [
     "override_reason",
 ]
 
+LEGAL_FISCAL_REVIEW_CLAUSE = "subject to D4 legal review and D5 fiscal verification"
+PHASE_OUT_CLAUSE = "temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035"
+
 
 def load_reason_codes(path: Path) -> dict[str, str]:
     data = load_yaml_mapping(path)
@@ -66,7 +69,7 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
     developer_compliance = clean_text(row.get("developer_compliance_status")).lower() or "unknown"
     activity = clean_text(row.get("activity_category")).lower() or "unclear"
     fiscal_exposure = clean_text(row.get("fiscal_exposure_level")).lower() or "unknown"
-    fiscal_confidence = clean_text(row.get("fiscal_data_confidence")).lower() or "missing"
+    fiscal_confidence = clean_text(row.get("fiscal_data_status")).lower() or "missing"
 
     codes: list[str] = []
     gates: list[str] = []
@@ -82,28 +85,28 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         gates.append("high_legal_risk")
         codes.extend(["R01", "R02", "R12"])
     elif developer_compliance == "non_compliant":
-        treatment = "Sanction/cure review before support"
+        treatment = f"Sanction/cure review before any support; {LEGAL_FISCAL_REVIEW_CLAUSE}"
         gates.append("developer_non_compliant")
         codes.extend(["R03", "R15", "R12"])
     elif activity == "vacant_or_speculative":
-        treatment = "No new fiscal support; enforcement or land-use review"
+        treatment = f"No new fiscal support; enforcement or land-use review; {LEGAL_FISCAL_REVIEW_CLAUSE}"
         gates.append("vacant_or_speculative_activity")
         codes.extend(["R07", "R13", "R15"])
     elif activity == "allotted_but_inactive":
-        treatment = "No new fiscal support; non-fiscal facilitation or cure plan only"
+        treatment = f"No new fiscal support; non-fiscal facilitation or cure plan only; {LEGAL_FISCAL_REVIEW_CLAUSE}"
         gates.append("allotted_but_inactive_activity")
         codes.extend(["R06", "R13", "R14"])
     elif activity == "moving_toward_production":
-        treatment = "Possible transition candidate; fiscal/legal verification required"
+        treatment = f"Possible transition screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}"
         pilot = band == "high" and legal_risk in {"low", "medium"}
         codes.extend(["R05", "R09", "R16", "R17"])
     elif activity == "operating_productive":
         if fiscal_exposure == "unknown" or fiscal_confidence == "missing":
-            treatment = "Possible pilot screen candidate pending D4 legal and D5 fiscal review"
+            treatment = f"Possible pilot screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}"
             pilot = band in {"medium", "high"} and legal_risk != "high"
             codes.extend(["R04", "R09", "R10", "R16", "R17"])
         else:
-            treatment = "Possible limited cost-based support candidate subject to caps and audit"
+            treatment = f"Possible cost-based support screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}; {PHASE_OUT_CLAUSE}"
             pilot = band in {"medium", "high"} and legal_risk in {"low", "medium"}
             codes.extend(["R04", "R10", "R16", "R17"])
     else:

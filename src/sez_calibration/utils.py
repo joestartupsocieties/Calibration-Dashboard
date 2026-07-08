@@ -30,7 +30,7 @@ def clean_text(value: Any) -> str:
 
 def normalize_column_name(name: Any) -> str:
     text = clean_text(name).lower()
-    text = re.sub(r"[\s/\-()]+", "_", text)
+    text = re.sub(r"[\s/\-().]+", "_", text)
     text = re.sub(r"[^a-z0-9_]+", "", text)
     text = re.sub(r"_+", "_", text)
     return text.strip("_")

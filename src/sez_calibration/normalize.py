@@ -8,14 +8,13 @@ import pandas as pd
 from .utils import normalize_column_name
 
 
-REQUIRED_ZONE_FIELDS = [
+EXPECTED_ZONE_COLUMNS = [
     "zone_id",
     "zone_name",
     "province",
     "developer_name",
     "developer_mode",
     "zone_type",
-    "cpec_status",
     "operational_status",
     "total_area_acres",
     "industrial_area_acres",
@@ -26,8 +25,6 @@ REQUIRED_ZONE_FIELDS = [
     "boundary_wall_only_area_acres",
     "unsold_area_acres",
     "number_allottees",
-    "approved_zone_enterprises",
-    "irregular_or_legacy_allottees",
     "electricity_status",
     "gas_status",
     "water_status",
@@ -35,7 +32,6 @@ REQUIRED_ZONE_FIELDS = [
     "roads_status",
     "source_file",
     "source_row",
-    "data_confidence",
 ]
 
 NUMERIC_FIELDS = [
@@ -48,12 +44,9 @@ NUMERIC_FIELDS = [
     "boundary_wall_only_area_acres",
     "unsold_area_acres",
     "number_allottees",
-    "approved_zone_enterprises",
-    "irregular_or_legacy_allottees",
 ]
 
 SYNONYMS = {
-    "developer": "developer_name",
     "developer": "developer_name",
     "developer_type": "developer_mode",
     "notified_area_acres": "total_area_acres",
@@ -63,8 +56,6 @@ SYNONYMS = {
     "area_unsold_acres": "unsold_area_acres",
     "number_of_allottees": "number_allottees",
     "allottees": "number_allottees",
-    "number_of_zone_enterprises": "approved_zone_enterprises",
-    "zone_enterprises": "approved_zone_enterprises",
     "road_status": "roads_status",
     "roads": "roads_status",
     "source_sheet": "source_file",
@@ -88,7 +79,7 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     if "zone_id" not in df.columns:
         df.insert(0, "zone_id", [f"SEZ-{i:03d}" for i in range(1, len(df) + 1)])
 
-    for field in REQUIRED_ZONE_FIELDS:
+    for field in EXPECTED_ZONE_COLUMNS:
         if field not in df.columns:
             df[field] = pd.NA
 
@@ -99,9 +90,10 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df["province"] = df["province"].fillna("").astype(str).str.strip()
     df["source_file"] = df["source_file"].fillna("").astype(str).str.strip()
     df["source_row"] = df["source_row"].fillna("").astype(str).str.strip()
-    df["data_confidence"] = df["data_confidence"].fillna("").astype(str).str.strip()
+    if "data_confidence" in df.columns:
+        df["data_confidence"] = df["data_confidence"].fillna("").astype(str).str.strip()
 
-    ordered = REQUIRED_ZONE_FIELDS + [col for col in df.columns if col not in REQUIRED_ZONE_FIELDS]
+    ordered = EXPECTED_ZONE_COLUMNS + [col for col in df.columns if col not in EXPECTED_ZONE_COLUMNS]
     return df[ordered]
 
 
@@ -135,7 +127,7 @@ def sample_zone_rows() -> list[dict[str, Any]]:
             "under_production_area_acres": production,
             "unsold_area_acres": unsold,
             "number_allottees": allottees,
-            "approved_zone_enterprises": enterprises,
+            "number_of_zone_enterprises": enterprises,
             "electricity_status": "Demo data",
             "gas_status": "Demo data",
             "water_status": "Demo data",

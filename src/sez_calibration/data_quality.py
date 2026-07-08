@@ -56,6 +56,9 @@ ACREAGE_FIELDS = [
     "unsold_area_acres",
 ]
 
+HIGH_ALLOTTED_ABSOLUTE_ACRES = 25.0
+HIGH_ALLOTTED_INDUSTRIAL_SHARE = 0.50
+
 
 def run_data_quality_checks(zone_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     issues: list[dict[str, object]] = []
@@ -112,7 +115,7 @@ def run_data_quality_checks(zone_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
         "high",
         "Legal and fiscal fields are placeholders pending D4 legal review and D5/FBR/customs fiscal verification.",
         "Replace placeholder tables with reviewed D4/D5 outputs before final decisions.",
-        "The rule engine can screen zones but cannot approve final incentive treatment.",
+        "The rule engine can screen zones but cannot make final incentive decisions.",
     )
 
     for _, zone in zone_df.iterrows():
@@ -175,10 +178,22 @@ def run_data_quality_checks(zone_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
         status = clean_text(zone.get("operational_status")).lower()
         if status in {"unknown", "n/a", "na"}:
             add(issues, zone, "operational_status", "warning", "medium", "Operational status is unknown.", "Map raw status labels into a controlled status dictionary.", "Activity classification may default to unclear.")
-        if ("operational" in status or "under production" in status) and (production is None or production == 0):
+        if _status_says_operational(status) and (production is None or production == 0):
             add(contradictions, zone, "operational_status/under_production_area_acres", "contradiction", "medium", "Status implies operation or production, but production area is zero or missing.", "Check enterprise rows and 2026 colonization metrics.", "Pilot screening may overstate productive activity.")
-        if any(token in status for token in ["non-operational", "vacant", "only boundary wall"]) and production not in (None, 0):
+        if _status_says_non_operational(status) and production not in (None, 0):
             add(contradictions, zone, "operational_status/under_production_area_acres", "contradiction", "medium", "Status implies non-production, but production area is positive.", "Reconcile raw status and acreage source dates.", "Hard gates may route the zone inconsistently.")
+
+        if _has_high_allotted_no_activity(allotted, industrial, production, construction):
+            add(
+                issues,
+                zone,
+                "allotted_area_acres",
+                "stalled_activity",
+                "high",
+                "High allotted area is reported, but production and construction acreage are zero or missing.",
+                "Verify enterprise activity, plot status, and construction data against source rows.",
+                "Activity classification may route the zone as inactive despite high apparent land uptake.",
+            )
 
         confidence_text = clean_text(zone.get("data_confidence")).lower()
         if "no 2026 colonization match" in confidence_text:
@@ -219,6 +234,40 @@ def _is_missing(value: object) -> bool:
     if value is None or pd.isna(value):
         return True
     return str(value).strip() == ""
+
+
+def _status_says_operational(status: str) -> bool:
+    if _status_says_non_operational(status):
+        return False
+    return any(token in status for token in ["operational", "under production", "in production", "production", "operating"])
+
+
+def _status_says_non_operational(status: str) -> bool:
+    return any(
+        token in status
+        for token in [
+            "non-operational",
+            "non operational",
+            "not operational",
+            "vacant",
+            "only boundary wall",
+            "boundary wall only",
+        ]
+    )
+
+
+def _has_high_allotted_no_activity(
+    allotted: float | None,
+    industrial: float | None,
+    production: float | None,
+    construction: float | None,
+) -> bool:
+    if allotted is None or allotted <= 0:
+        return False
+    if production not in (None, 0) or construction not in (None, 0):
+        return False
+    share_threshold = industrial * HIGH_ALLOTTED_INDUSTRIAL_SHARE if industrial is not None and industrial > 0 else 0
+    return allotted >= max(HIGH_ALLOTTED_ABSOLUTE_ACRES, share_threshold)
 
 
 def _canonical_name(name: str) -> str:

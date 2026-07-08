@@ -10,63 +10,68 @@ from .utils import ensure_dir
 LEGAL_FIELDS = [
     "zone_id",
     "zone_name",
-    "development_agreement_status",
     "legal_risk_level",
-    "grandfathering_risk",
     "developer_compliance_status",
     "enterprise_compliance_status",
-    "reform_space",
     "legal_review_required",
-    "legal_notes",
 ]
 
 FISCAL_FIELDS = [
     "zone_id",
     "zone_name",
-    "cit_foregone",
-    "customs_duties_foregone",
-    "land_concession_value",
-    "infrastructure_public_cost",
-    "utility_subsidy_or_psdp_cost",
-    "administrative_cost",
-    "tax_paid",
-    "net_direct_fiscal_position",
     "fiscal_exposure_level",
-    "fiscal_data_confidence",
-    "fiscal_notes",
+    "fiscal_data_status",
+]
+
+LEGAL_FISCAL_PLACEHOLDER_FILE = "legal_fiscal_placeholders.csv"
+PLACEHOLDER_FIELDS = [
+    "zone_id",
+    "zone_name",
+    "legal_risk_level",
+    "developer_compliance_status",
+    "enterprise_compliance_status",
+    "legal_review_required",
+    "fiscal_exposure_level",
+    "fiscal_data_status",
+    "notes",
 ]
 
 LEGAL_DEFAULTS = {
-    "development_agreement_status": "unknown",
     "legal_risk_level": "unknown",
-    "grandfathering_risk": "unknown",
     "developer_compliance_status": "unknown",
     "enterprise_compliance_status": "unknown",
-    "reform_space": "unknown",
     "legal_review_required": True,
-    "legal_notes": "Placeholder pending D4 legal review.",
 }
 
 FISCAL_DEFAULTS = {
-    "cit_foregone": pd.NA,
-    "customs_duties_foregone": pd.NA,
-    "land_concession_value": pd.NA,
-    "infrastructure_public_cost": pd.NA,
-    "utility_subsidy_or_psdp_cost": pd.NA,
-    "administrative_cost": pd.NA,
-    "tax_paid": pd.NA,
-    "net_direct_fiscal_position": pd.NA,
     "fiscal_exposure_level": "unknown",
-    "fiscal_data_confidence": "missing",
-    "fiscal_notes": "Placeholder pending D5/FBR/customs fiscal verification.",
+    "fiscal_data_status": "missing",
+    "notes": "Legal/fiscal placeholders pending D4 legal review and D5 fiscal verification.",
 }
 
 
 def ensure_placeholder_tables(zone_df: pd.DataFrame, data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    ensure_dir(data_dir)
-    legal = _ensure_table(data_dir / "legal_compliance_placeholder.csv", zone_df, LEGAL_FIELDS, LEGAL_DEFAULTS)
-    fiscal = _ensure_table(data_dir / "fiscal_exposure_placeholder.csv", zone_df, FISCAL_FIELDS, FISCAL_DEFAULTS)
+    legal, fiscal, _metadata = ensure_placeholder_tables_with_metadata(zone_df, data_dir)
     return legal, fiscal
+
+
+def ensure_placeholder_tables_with_metadata(zone_df: pd.DataFrame, data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+    ensure_dir(data_dir)
+    path = data_dir / LEGAL_FISCAL_PLACEHOLDER_FILE
+    placeholders_created = not path.exists()
+    combined = _ensure_table(
+        path,
+        zone_df,
+        PLACEHOLDER_FIELDS,
+        {**LEGAL_DEFAULTS, **FISCAL_DEFAULTS},
+    )
+    legal = combined[LEGAL_FIELDS].copy()
+    fiscal = combined[FISCAL_FIELDS].copy()
+    metadata = {
+        "placeholder_file": str(path),
+        "placeholders_created": bool(placeholders_created),
+    }
+    return legal, fiscal, metadata
 
 
 def _ensure_table(path: Path, zone_df: pd.DataFrame, fields: list[str], defaults: dict[str, object]) -> pd.DataFrame:
