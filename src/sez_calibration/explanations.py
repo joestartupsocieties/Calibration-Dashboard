@@ -22,7 +22,7 @@ def build_recommendation_explanations(recommendations: pd.DataFrame, reason_code
         code_list = split_reason_codes(rec.get("reason_codes"))
         decoded = "; ".join(f"{code}: {reason_codes.get(code, 'Unmapped reason code')}" for code in code_list)
         limitations = _limitations(rec)
-        next_actions = " | ".join(
+        next_actions = clean_text(rec.get("next_actions")) or " | ".join(
             [
                 clean_text(rec.get("required_data_action")),
                 clean_text(rec.get("required_legal_action")),
@@ -33,8 +33,8 @@ def build_recommendation_explanations(recommendations: pd.DataFrame, reason_code
             f"{rec.get('zone_name')} receives the provisional treatment: {rec.get('recommended_treatment')}. "
             f"The screening result reflects activity category `{rec.get('activity_category')}`, data confidence "
             f"`{rec.get('data_confidence_band')}`, legal risk `{rec.get('legal_risk_level')}`, and fiscal exposure "
-            f"`{rec.get('fiscal_exposure_level')}`. This is not final eligibility; human review, D4 legal review, "
-            "and D5/FBR fiscal verification remain part of the required trail."
+            f"`{rec.get('fiscal_exposure_level')}`. This is a demo screening result only; human review, "
+            "D4 legal review, and D5/FBR fiscal verification remain part of the required trail."
         )
         rows.append(
             {

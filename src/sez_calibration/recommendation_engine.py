@@ -23,6 +23,7 @@ RECOMMENDATION_COLUMNS = [
     "pilot_eligible_flag",
     "hard_gates_triggered",
     "reason_codes",
+    "next_actions",
     "required_data_action",
     "required_legal_action",
     "required_fbr_action",
@@ -32,7 +33,6 @@ RECOMMENDATION_COLUMNS = [
 ]
 
 LEGAL_FISCAL_REVIEW_CLAUSE = "subject to D4 legal review and D5 fiscal verification"
-PHASE_OUT_CLAUSE = "temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035"
 
 
 def load_reason_codes(path: Path) -> dict[str, str]:
@@ -85,31 +85,29 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         gates.append("high_legal_risk")
         codes.extend(["R01", "R02", "R12"])
     elif developer_compliance == "non_compliant":
-        treatment = f"Sanction/cure review before any support; {LEGAL_FISCAL_REVIEW_CLAUSE}"
+        treatment = "Sanction/cure review before support"
         gates.append("developer_non_compliant")
         codes.extend(["R03", "R15", "R12"])
     elif activity == "vacant_or_speculative":
-        treatment = f"No new fiscal support; enforcement or land-use review; {LEGAL_FISCAL_REVIEW_CLAUSE}"
+        treatment = "No new fiscal support; enforcement or land-use review"
         gates.append("vacant_or_speculative_activity")
         codes.extend(["R07", "R13", "R15"])
     elif activity == "allotted_but_inactive":
-        treatment = f"No new fiscal support; non-fiscal facilitation or cure plan only; {LEGAL_FISCAL_REVIEW_CLAUSE}"
+        treatment = "No new fiscal support; non-fiscal facilitation or cure plan only"
         gates.append("allotted_but_inactive_activity")
         codes.extend(["R06", "R13", "R14"])
     elif activity == "moving_toward_production":
-        treatment = f"Possible transition screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}"
+        treatment = "Possible transition candidate; legal and fiscal verification required"
         pilot = band == "high" and legal_risk in {"low", "medium"}
-        codes.extend(["R05", "R09", "R16", "R17"])
+        codes.extend(["R05", "R09", "R10", "R16", "R17"])
     elif activity == "operating_productive":
+        treatment = "Possible pilot screen candidate pending D4 legal review and D5 fiscal verification"
+        pilot = band in {"medium", "high"} and legal_risk != "high"
+        codes.extend(["R04", "R10", "R16", "R17"])
         if fiscal_exposure == "unknown" or fiscal_confidence == "missing":
-            treatment = f"Possible pilot screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}"
-            pilot = band in {"medium", "high"} and legal_risk != "high"
-            codes.extend(["R04", "R09", "R10", "R16", "R17"])
-        else:
-            treatment = f"Possible cost-based support screen candidate; {LEGAL_FISCAL_REVIEW_CLAUSE}; {PHASE_OUT_CLAUSE}"
-            pilot = band in {"medium", "high"} and legal_risk in {"low", "medium"}
-            codes.extend(["R04", "R10", "R16", "R17"])
+            codes.append("R09")
     else:
+        treatment = "Human review required"
         codes.extend(["R12", "R08" if band in {"low", "do_not_use"} else "R17"])
 
     if clean_text(row.get("legal_review_required")).lower() in {"true", "1", "yes"} or legal_risk == "unknown":
@@ -147,6 +145,11 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
     if len(codes) < 2:
         codes = _unique(codes + ["R12", "R17"])
 
+    data_action = _data_action(band, gates)
+    legal_action = _legal_action(legal_risk, row)
+    fbr_action = _fbr_action(fiscal_exposure, fiscal_confidence)
+    next_actions = _next_actions(data_action, legal_action, fbr_action)
+
     return {
         "zone_id": row.get("zone_id"),
         "zone_name": row.get("zone_name"),
@@ -162,9 +165,10 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         "pilot_eligible_flag": bool(pilot),
         "hard_gates_triggered": "; ".join(_unique(gates)) if gates else "none",
         "reason_codes": "; ".join(codes),
-        "required_data_action": _data_action(band, gates),
-        "required_legal_action": _legal_action(legal_risk, row),
-        "required_fbr_action": _fbr_action(fiscal_exposure, fiscal_confidence),
+        "next_actions": next_actions,
+        "required_data_action": data_action,
+        "required_legal_action": legal_action,
+        "required_fbr_action": fbr_action,
         "human_review_status": "Required",
         "human_override_flag": False,
         "override_reason": "",
@@ -214,3 +218,14 @@ def _fbr_action(fiscal_exposure: str, fiscal_confidence: str) -> str:
     if fiscal_exposure == "unknown" or fiscal_confidence == "missing":
         return "Complete D5/FBR/customs fiscal exposure verification."
     return "Audit fiscal exposure, caps, and fiscal neutrality before support."
+
+
+def _next_actions(data_action: str, legal_action: str, fbr_action: str) -> str:
+    return " | ".join(
+        [
+            data_action,
+            legal_action,
+            fbr_action,
+            "Subject to D4 legal review and D5 fiscal verification.",
+        ]
+    )
