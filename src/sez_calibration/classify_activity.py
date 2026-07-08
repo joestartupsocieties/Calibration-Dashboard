@@ -27,6 +27,7 @@ def classify_activity(zone_df: pd.DataFrame) -> pd.DataFrame:
         industrial = to_float(zone.get("industrial_area_acres")) or 0.0
         vacant = to_float(zone.get("vacant_area_acres")) or 0.0
         unsold = to_float(zone.get("unsold_area_acres")) or 0.0
+        status_text = str(zone.get("operational_status") or "").strip().lower()
 
         prod_industrial = safe_divide(production, industrial)
         prod_allotted = safe_divide(production, allotted)
@@ -43,6 +44,7 @@ def classify_activity(zone_df: pd.DataFrame) -> pd.DataFrame:
             construction_allotted,
             vacant_allotted,
             unsold_share,
+            status_text,
         )
         rows.append(
             {
@@ -72,11 +74,14 @@ def _classify(
     construction_allotted: float | None,
     vacant_allotted: float | None,
     unsold_share: float | None,
+    status_text: str = "",
 ) -> tuple[str, str]:
+    if "under construction" in status_text and "under production" not in status_text and "production" not in status_text:
+        return "moving_toward_production", "Reported status is under construction, so the zone is treated as construction-stage rather than operating."
     if production > 0 or (prod_allotted is not None and prod_allotted >= 0.10):
-        return "operating_productive", "Reported production area or production share meets the MVP threshold."
+        return "operating_productive", "Reported production area or production share meets the screening threshold."
     if construction > 0 or (construction_allotted is not None and construction_allotted >= 0.10):
-        return "moving_toward_production", "Construction area or construction share meets the MVP transition threshold."
+        return "moving_toward_production", "Construction area or construction share meets the transition threshold."
     if (vacant_allotted is not None and vacant_allotted >= 0.50) or (unsold_share is not None and unsold_share >= 0.50):
         return "vacant_or_speculative", "Vacant allotted land or unsold industrial land share is high."
     if allotted > 0 and production == 0 and construction == 0:

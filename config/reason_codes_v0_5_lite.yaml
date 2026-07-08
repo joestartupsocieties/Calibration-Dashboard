@@ -1,18 +1,22 @@
-R01: Legal review required
-R02: Existing legal/contractual position unknown or may restrict phase-out
-R03: Developer or enterprise compliance unknown/problematic
+R01: High legal / contractual risk
+R02: Binding grandfathering or transition issue
+R03: Developer or enterprise compliance concern
 R04: Reported production activity
-R05: Construction activity but not yet production
-R06: Allotment-only movement / weak evidence of productive use
-R07: High vacant or unsold land share
+R05: Reported construction activity
+R06: Allotment-only movement
+R07: High vacant / idle land share
 R08: Low data confidence
-R09: Fiscal exposure missing; D5/FBR/customs verification required
-R10: Possible pilot screen candidate
-R11: Infrastructure or utility constraint may explain underperformance
-R12: Human review required
-R13: Temporary transition support, subject to D4/D5 verification, cannot be recommended from current data
-R14: Non-fiscal facilitation may be more appropriate
-R15: Sanction/cure review may be required
-R16: Any cost-based support must be temporary and end by 30 June 2035
-R17: Subject to D4 legal review and D5 fiscal verification
-R18: Source universe mismatch: current demo uses normalized 35-zone data, not final 44/54-zone universe
+R09: Fiscal exposure missing
+R10: Fiscal exposure high
+R11: Additionality uncertain
+R12: Infrastructure / utility constraint
+R13: FBR validation required
+R14: Legal review required
+R15: Possible pilot-readiness
+R16: Non-fiscal support may be more appropriate
+R17: Human review required
+R18: Coverage / definition issue
+R19: Source-row verification required
+R20: Legal sunset / expiry issue
+R21: Developer obligation issue
+R22: Enterprise-level data missing

@@ -29,7 +29,7 @@ def build_recommendation_explanations(recommendations: pd.DataFrame, reason_code
                 clean_text(rec.get("required_fbr_action")),
             ]
         )
-        explanation = _memo(rec)
+        explanation = clean_text(rec.get("why")) or _memo(rec)
         rows.append(
             {
                 "zone_id": rec.get("zone_id"),
@@ -59,6 +59,8 @@ def _limitations(rec: pd.Series) -> str:
         items.append("Legal risk is a placeholder pending D4 legal review.")
     if rec.get("data_confidence_band") in {"low", "do_not_use"}:
         items.append("Data confidence is too weak for reliable screening.")
+    if rec.get("additionality_confidence") in {"Unknown", "Low"}:
+        items.append("Additionality and net fiscal/economic impact require separate validation.")
     return " ".join(items)
 
 
