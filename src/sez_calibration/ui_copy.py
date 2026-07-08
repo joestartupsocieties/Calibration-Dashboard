@@ -1,7 +1,7 @@
 """Public-demo UI copy constants for the Streamlit shell."""
 
 APP_TITLE = "SEZ Incentive Transition Triage"
-APP_SUBTITLE = "Provisional decision-support for legal, fiscal, data-confidence, and pilot-readiness review."
+APP_SUBTITLE = "Provisional decision-support for legal, fiscal, source-data confidence, and pilot-readiness review."
 DATA_PROFILE_LABEL = "Synthetic demo view"
 DATASET_BASIS_LABEL = "Structured screening dataset"
 HUMAN_REVIEW_LABEL = "Human review required"

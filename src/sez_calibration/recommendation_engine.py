@@ -191,7 +191,16 @@ def apply_fiscal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, obje
     exposure = _record_text(record, "fiscal_exposure_level") or "unknown"
     status = _record_text(record, "fiscal_data_status") or "missing"
     gates: list[dict[str, object]] = []
-    if exposure in {"", "unknown", "missing"} or status in {"", "missing", "unknown", "placeholder"}:
+    missing_or_unverified_statuses = {
+        "",
+        "missing",
+        "unknown",
+        "placeholder",
+        "preliminary",
+        "requires verification",
+        "requires_verification",
+    }
+    if exposure in {"", "unknown", "missing"} or status in missing_or_unverified_statuses:
         gates.append(
             _gate(
                 "fiscal_exposure_missing",
@@ -313,10 +322,14 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         return PROVISIONAL_TREATMENTS["sanction"]
     if _has_gate(gates, "high_legal_risk"):
         return PROVISIONAL_TREATMENTS["legal"]
+    if _has_gate(gates, "fiscal_exposure_missing"):
+        return PROVISIONAL_TREATMENTS["fiscal"]
     if _low_additionality_high_fiscal(record):
         if activity in {"vacant_or_speculative", "allotted_but_inactive", "unclear"}:
             return PROVISIONAL_TREATMENTS["phase_out"]
         return PROVISIONAL_TREATMENTS["non_fiscal"]
+    if _has_gate(gates, "high_fiscal_exposure"):
+        return PROVISIONAL_TREATMENTS["fiscal"]
     if _has_gate(gates, "scenario_legal_low_risk_required"):
         return PROVISIONAL_TREATMENTS["legal"]
     if _has_gate(gates, "scenario_fiscal_data_required"):
@@ -347,8 +360,6 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         return PROVISIONAL_TREATMENTS["more_data"]
     if _has_gate(gates, "legal_review_required"):
         return PROVISIONAL_TREATMENTS["legal"]
-    if _has_gate(gates, "fiscal_exposure_missing") or _has_gate(gates, "high_fiscal_exposure"):
-        return PROVISIONAL_TREATMENTS["fiscal"]
     return PROVISIONAL_TREATMENTS["more_data"]
 
 
@@ -684,10 +695,20 @@ def generate_duration_sunset(provisional_treatment: str, support_treatment: str)
 
 def generate_conditions_gates(record: pd.Series | dict[str, Any], gates: list[dict[str, object]]) -> list[str]:
     conditions = [str(gate["label"]) for gate in gates]
+    additionality = infer_additionality_confidence(record)
+    counterfactual = infer_counterfactual_status(record)
     conditions.extend(
         [
-            "Additionality validation required.",
-            "Counterfactual or comparator evidence required.",
+            (
+                "Additionality evidence pack requires human confirmation."
+                if additionality == "High"
+                else "Additionality validation required."
+            ),
+            (
+                "Counterfactual evidence pack requires human confirmation."
+                if counterfactual == "Validated"
+                else "Counterfactual or comparator evidence required."
+            ),
             "Net fiscal/economic impact validation required.",
             "Enterprise-level evidence required.",
             "KPI and audit framework required.",
@@ -885,6 +906,8 @@ def _pilot_review_flag(provisional_treatment: str, gates: list[dict[str, object]
     blocking_ids = {
         "low_data_confidence",
         "high_legal_risk",
+        "fiscal_exposure_missing",
+        "high_fiscal_exposure",
         "compliance_non_compliant",
         "scenario_minimum_confidence_band",
         "scenario_legal_low_risk_required",

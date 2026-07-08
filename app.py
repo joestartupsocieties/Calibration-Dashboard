@@ -61,8 +61,8 @@ SHOW_ADVANCED_SCENARIOS = os.getenv("SHOW_ADVANCED_SCENARIOS") == "1"
 PAGES = [
     "Executive Triage",
     "Case Review",
-    "Data Confidence",
-    "Export",
+    "Source-Data Confidence",
+    "Work-Product Exports",
     "About / Limitations",
 ]
 if SHOW_ADVANCED_SCENARIOS:
@@ -83,9 +83,9 @@ DEMO_SCRIPT_STEPS = [
     "This is the executive triage view.",
     "The tool does not make final decisions; it shows provisional treatment categories.",
     "This example shows reported activity, but legal and fiscal validation are still required.",
-    "This example shows how low data confidence blocks policy use.",
-    "This example shows how assumptions change the output.",
-    "The output can be exported as a short screening note.",
+    "This example shows how low source-data confidence blocks policy use.",
+    "This example shows how source-data confidence affects calibration readiness.",
+    "The structured Excel and CSV outputs can be exported as work products.",
 ]
 DEMO_CASE_DEFINITIONS = [
     {
@@ -100,7 +100,7 @@ DEMO_CASE_DEFINITIONS = [
     },
     {
         "key": "zone_c",
-        "anonymous_label": "Zone C \u2014 low data confidence / more data required",
+        "anonymous_label": "Zone C \u2014 low source-data confidence / more data required",
         "selector_note": "source-confidence case",
     },
     {
@@ -289,7 +289,7 @@ SCENARIO_PRESETS = {
         },
     },
     "Pilot-readiness screen": {
-        "behavior": "Emphasizes operational readiness, data confidence, verification feasibility, and pilot learning value.",
+        "behavior": "Emphasizes operational readiness, source-data confidence, verification feasibility, and pilot learning value.",
         "weights": {"legal": "medium", "compliance": "medium", "fiscal": "medium", "data_quality": "high", "pilot_learning": "high"},
         "gates": {
             "require_legal_low_risk_for_pilot": True,
@@ -386,7 +386,7 @@ FIELD_LABELS = {
     "source_file": "Source Package",
     "source_row": "Source Row",
     "data_confidence_score": "Confidence Score",
-    "data_confidence_band": "Data Confidence",
+    "data_confidence_band": "Source-Data Confidence",
     "activity_category": "Activity Classification",
     "recommended_treatment": "Provisional Treatment",
     "hard_gates_display": "Open Validation Gates",
@@ -443,7 +443,7 @@ FIELD_LABELS = {
 }
 
 GATE_LABELS = {
-    "low_data_confidence": "Data confidence is too low for fiscal or calibration use",
+    "low_data_confidence": "Source-data confidence is too low for fiscal or calibration use",
     "high_legal_risk": "High legal or contractual risk; D4 legal review required",
     "legal_review_required": "Legal classification is not yet validated; D4 legal review required",
     "compliance_non_compliant": "Developer or enterprise compliance concern; sanction / withdrawal review required",
@@ -810,11 +810,13 @@ def initialize_state() -> None:
         "Zone Explorer": "Case Review",
         "Recommendation Engine": "Case Review",
         "Screening Output Engine": "Case Review",
-        "Data Intake": "Data Confidence",
-        "Data Validation": "Data Confidence",
-        "Data Validation & Source Confidence": "Data Confidence",
-        "KPI Assurance": "Data Confidence",
-        "Export Memo": "Export",
+        "Data Intake": "Source-Data Confidence",
+        "Data Validation": "Source-Data Confidence",
+        "Data Validation & Source Confidence": "Source-Data Confidence",
+        "Data Confidence": "Source-Data Confidence",
+        "KPI Assurance": "Source-Data Confidence",
+        "Export Memo": "Work-Product Exports",
+        "Export": "Work-Product Exports",
     }
     if "current_page" not in st.session_state:
         st.session_state.current_page = "Executive Triage"
@@ -1525,7 +1527,7 @@ def selected_zone_summary(row: pd.Series) -> pd.DataFrame:
         ("Under construction area", format_area(row.get("under_construction_area_acres"))),
         ("Under production area", format_area(row.get("under_production_area_acres"))),
         ("Vacant / idle area", combined_idle_area(row)),
-        ("Data confidence", row.get("Data Confidence")),
+        ("Source-data confidence", row.get("Data Confidence")),
         ("Legal status", row.get("Legal Status")),
         ("Fiscal status", row.get("Fiscal Status")),
         ("Compliance status", row.get("compliance_status")),
@@ -1695,7 +1697,7 @@ def calibration_why(row: pd.Series, treatment_class: str, instrument: str, cap: 
     confidence = display_value(row.get("Data Confidence", row.get("data_confidence_band")), "unknown")
     additionality = display_value(row.get("additionality_confidence"), "Unknown")
     return (
-        f"{zone} is shown as {treatment_class} because the current screen indicates {activity} and data confidence is "
+        f"{zone} is shown as {treatment_class} because the current screen indicates {activity} and source-data confidence is "
         f"{confidence}. The possible instrument is {instrument}, with fiscal cap status shown as {cap}. "
         f"Additionality confidence is {additionality}, so the output remains a D6 calibration input only and cannot be "
         "read as a policy decision, fiscal analysis output, tax decision, or incentive clearance."
@@ -1743,7 +1745,7 @@ def render_zone_header(row: pd.Series) -> None:
         f"<span><strong>Province:</strong> {html.escape(display_value(row.get('province')))}</span>"
         f"<span><strong>Developer:</strong> {html.escape(display_value(row.get('developer_name')))}</span>"
         f"<span><strong>Reported status:</strong> {html.escape(display_value(row.get('operational_status')))}</span>"
-        f"<span><strong>Data confidence:</strong> <span class='confidence-badge'>{html.escape(confidence)}</span></span>"
+        f"<span><strong>Source-data confidence:</strong> <span class='confidence-badge'>{html.escape(confidence)}</span></span>"
         "</div>"
         "</div>",
         unsafe_allow_html=True,
@@ -2282,7 +2284,7 @@ def executive_table(display_recommendations: pd.DataFrame) -> pd.DataFrame:
             "zone_name": "Zone",
             "province": "Province",
             "Activity Classification": "Activity classification",
-            "Data Confidence": "Data confidence",
+            "Data Confidence": "Source-data confidence",
             "Legal Status": "Legal status",
             "Fiscal Status": "Fiscal status",
             "Additionality Status": "Additionality status",
@@ -2342,7 +2344,7 @@ def executive_triage_table(recommendations: pd.DataFrame) -> pd.DataFrame:
             "Zone": recommendations.get("zone_name", pd.Series(dtype=str)).apply(display_value),
             "Province": recommendations.get("province", pd.Series(dtype=str)).apply(display_value),
             "Activity category": recommendations.get("activity_category", pd.Series(dtype=str)).apply(activity_label),
-            "Data confidence": recommendations.get("data_confidence_band", pd.Series(dtype=str)).apply(
+            "Source-data confidence": recommendations.get("data_confidence_band", pd.Series(dtype=str)).apply(
                 lambda value: visible_text(str(value).replace("_", " ").title(), "Not available")
             ),
             "Review pathway": recommendations.apply(executive_pathway_text, axis=1),
@@ -2517,7 +2519,7 @@ def render_zone_explorer(frames: dict[str, pd.DataFrame], display_recommendation
             default=filtered_options(explorer["Activity Classification"]),
         )
         confidence_filter = c3.multiselect(
-            "Data Confidence",
+            "Source-data confidence",
             filtered_options(explorer["Data Confidence"]),
             default=filtered_options(explorer["Data Confidence"]),
         )
@@ -2543,17 +2545,17 @@ def render_zone_explorer(frames: dict[str, pd.DataFrame], display_recommendation
         "Provisional Treatment",
         "Open Gates",
     ]
+    table_label_map = {
+        "zone_id": "Zone ID",
+        "zone_name": "Zone",
+        "province": "Province",
+        "Data Confidence": "Source-data confidence",
+        "Open Gates": "Open validation gates",
+    }
     if demo_mode_active() and "Demo Case" in filtered.columns:
         table_columns = ["Demo Case", "Activity Classification", "Data Confidence", "Provisional Treatment", "Open Gates"]
     st.dataframe(
-        filtered[[column for column in table_columns if column in filtered.columns]].rename(
-            columns={
-                "zone_id": "Zone ID",
-                "zone_name": "Zone",
-                "province": "Province",
-                "Open Gates": "Open validation gates",
-            }
-        ),
+        filtered[[column for column in table_columns if column in filtered.columns]].rename(columns=table_label_map),
         width="stretch",
         hide_index=True,
     )
@@ -2625,7 +2627,7 @@ def render_recommendation_engine(
     c4.metric("Activity Classification", activity_label(rec["activity_category"]))
 
     c5, c6, c7 = st.columns(3)
-    c5.metric("Data Confidence", visible_text(display_rec["Data Confidence"]))
+    c5.metric("Source-Data Confidence", visible_text(display_rec["Data Confidence"]))
     c6.metric("Legal Status", visible_text(rec.get("legal_status", display_rec["Legal Status"])))
     c7.metric("Fiscal Status", visible_text(rec.get("fiscal_exposure_status", display_rec["Fiscal Status"])))
 
@@ -2702,8 +2704,8 @@ def render_recommendation_engine(
             scoring = pd.DataFrame(
                 [
                     {
-                        "Data Confidence Score": rec.get("data_confidence_score"),
-                        "Data Confidence Band": rec.get("data_confidence_band"),
+                        "Source-Data Confidence Score": rec.get("data_confidence_score"),
+                        "Source-Data Confidence Band": rec.get("data_confidence_band"),
                         "Open Validation Gates": rec.get("open_validation_gates", format_gates(rec.get("hard_gates_triggered"))),
                         "Reason Codes": rec.get("reason_codes"),
                         "Validator / Owner": rec.get("validator_owner"),
@@ -3101,10 +3103,16 @@ def render_case_review(
 
 
 def render_data_confidence_mvp(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
-    st.markdown("### Data Confidence")
+    st.markdown("### Source-Data Confidence")
     st.caption(
         "This page identifies whether a zone record is usable for provisional screening, requires source-row "
         "verification, or should be kept out of calibration use."
+    )
+    callout_card(
+        "Calibration readiness note",
+        "Source-data confidence reflects completeness and consistency of the screening record. Calibration readiness "
+        "still depends on D4 legal review, D5/FBR fiscal verification, additionality/counterfactual analysis, "
+        "KPI validation, and human review.",
     )
 
     confidence = frames.get("confidence", pd.DataFrame())
@@ -3129,8 +3137,8 @@ def render_data_confidence_mvp(frames: dict[str, pd.DataFrame], summary: dict[st
 
     callout_card(
         "Dataset scope note",
-        "Current demo uses 35 structured screening records; do not generalize to the full "
-        "44/54-zone universe without reconciliation.",
+        "Current demo uses 14 fully synthetic hypothetical-zone records. Do not generalize to Pakistan's full "
+        "SEZ/EPZ universe without BOI/SEZA/FBR/legal reconciliation.",
     )
 
     st.markdown("#### Confidence by Zone")
@@ -3214,80 +3222,107 @@ def render_export_memo(
 ) -> None:
     st.markdown("### Work-Product Exports")
     callout_card(
-        "Structured outputs",
-        "Generate CSV extracts and a selected-zone screening note for the live walkthrough.",
+        "Structured outputs only",
+        "Download the generated Excel workbook and supporting CSV/JSON extracts. These files are work-product "
+        "exports for review; they are not legal, fiscal, tax, or incentive decisions.",
     )
 
     recommendations = frames["recommendations"]
-    cases = demo_case_catalog(recommendations)
-    if cases:
-        case_map = {str(case["key"]): case for case in cases}
-        valid_keys = list(case_map)
-        if st.session_state.get("demo_case_key") not in valid_keys:
-            st.session_state.demo_case_key = valid_keys[0]
-        st.selectbox(
-            "Screening note case",
-            valid_keys,
-            key="demo_case_key",
-            format_func=lambda key: str(case_map[key]["anonymous_label"]),
-        )
-
-    case, selected_rec, _display_rec = selected_demo_context(frames, display_recommendations)
-    selected_file_token = safe_file_token(case.get("key") if case else selected_rec.get("zone_id", "selected_zone"))
     export_display = demo_display_rows(display_recommendations, recommendations)
     triage_export = executive_table(export_display)
     validation_export = demo_scope_table(validation_display_table(frames), recommendations)
+    selected_rec = recommendations.iloc[0] if not recommendations.empty else pd.Series(dtype=object)
     metadata = export_metadata(summary, selected_rec)
+
+    output_files = [
+        (
+            "Full Excel Workbook",
+            ROOT / "outputs" / "sez_calibration_demo_outputs.xlsx",
+            "sez_calibration_demo_outputs.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Workbook containing the generated triage, explanation, validation, confidence, activity, reason-code, and limitations sheets.",
+        ),
+        (
+            "Executive Triage Table CSV",
+            ROOT / "outputs" / "zone_triage_prototype.csv",
+            "zone_triage_prototype.csv",
+            "text/csv",
+            "Full zone-level provisional review pathway table.",
+        ),
+        (
+            "Recommendation / Pathway Explanations CSV",
+            ROOT / "outputs" / "recommendation_explanations.csv",
+            "recommendation_explanations.csv",
+            "text/csv",
+            "Plain-English explanation trail and reason-code details.",
+        ),
+        (
+            "Source-Data Confidence CSV",
+            ROOT / "outputs" / "data_confidence_scores.csv",
+            "data_confidence_scores.csv",
+            "text/csv",
+            "Completeness, consistency, source availability, and recency confidence scores.",
+        ),
+        (
+            "Validation / Audit Flags CSV",
+            ROOT / "outputs" / "audit_flags.csv",
+            "audit_flags.csv",
+            "text/csv",
+            "Open gate and validation flag log for review owners.",
+        ),
+        (
+            "Data-Quality Issue Log CSV",
+            ROOT / "outputs" / "data_quality_issue_log.csv",
+            "data_quality_issue_log.csv",
+            "text/csv",
+            "Detailed source-record validation flags generated by the pipeline.",
+        ),
+        (
+            "Activity Classification CSV",
+            ROOT / "outputs" / "activity_classification.csv",
+            "activity_classification.csv",
+            "text/csv",
+            "Reported activity classification for each synthetic zone record.",
+        ),
+        (
+            "Summary JSON",
+            ROOT / "outputs" / "summary.json",
+            "summary.json",
+            "application/json",
+            "Run metadata and aggregate pipeline counts.",
+        ),
+    ]
+
+    first_label, first_path, first_name, first_mime, first_note = output_files[0]
+    with st.container(border=True):
+        st.markdown("#### Full Excel Workbook")
+        st.caption(first_note)
+        if first_path.exists():
+            st.download_button(
+                f"Download {first_label}",
+                data=first_path.read_bytes(),
+                file_name=first_name,
+                mime=first_mime,
+            )
+        else:
+            st.warning("The Excel workbook has not been generated yet. Run the pipeline and refresh the app.")
 
     with st.container(border=True):
         st.markdown("#### Source / Audit Metadata")
         st.dataframe(pd.DataFrame([metadata]), width="stretch", hide_index=True)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.download_button(
-            "Export Executive Triage Table as CSV",
-            data=dataframe_to_csv_bytes(triage_export),
-            file_name="executive_triage_table.csv",
-            mime="text/csv",
-        )
-    with c2:
-        st.download_button(
-            "Export Validation Flags as CSV",
-            data=dataframe_to_csv_bytes(validation_export),
-            file_name="validation_flags.csv",
-            mime="text/csv",
-        )
-
-    st.markdown("#### Selected-Zone Screening Note")
-    if st.button("Generate selected-zone screening note"):
-        st.session_state.export_selected_zone_id = str(selected_rec.get("zone_id", selected_file_token))
-        st.session_state.export_memo_markdown = selected_zone_memo(selected_rec, reason_codes, summary)
-        st.session_state.export_memo_txt = selected_zone_memo(selected_rec, reason_codes, summary, plain_text=True)
-
-    if st.session_state.get("export_memo_markdown"):
-        memo_markdown = st.session_state.export_memo_markdown
-        memo_txt = st.session_state.export_memo_txt
-        st.markdown("##### Export Preview")
-        with st.container(border=True):
-            st.markdown(memo_markdown)
-        m1, m2 = st.columns(2)
-        with m1:
-            st.download_button(
-                "Export Selected-Zone Explanation as Markdown",
-                data=memo_markdown.encode("utf-8"),
-                file_name=f"{selected_file_token}_prototype_screening_note.md",
-                mime="text/markdown",
-            )
-        with m2:
-            st.download_button(
-                "Export Selected-Zone Explanation as TXT",
-                data=memo_txt.encode("utf-8"),
-                file_name=f"{selected_file_token}_prototype_screening_note.txt",
-                mime="text/plain",
-            )
-    else:
-        callout_card("Export preview", "Select a case and generate the screening note to preview it before downloading.")
+    st.markdown("#### Supporting Structured Exports")
+    for start in range(1, len(output_files), 2):
+        cols = st.columns(2)
+        for col, (label, path, file_name, mime, note) in zip(cols, output_files[start : start + 2]):
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"##### {label}")
+                    st.caption(note)
+                    if path.exists():
+                        st.download_button(f"Download {label}", data=path.read_bytes(), file_name=file_name, mime=mime)
+                    else:
+                        st.info("This output will be available after the pipeline runs.")
 
     with st.expander("CSV preview tables", expanded=False):
         st.markdown("##### Executive triage table")
@@ -3429,8 +3464,8 @@ def render_data_intake(frames: dict[str, pd.DataFrame], summary: dict[str, Any])
                         "Decision Connection": "D4 legal review required before treatment screening or phase-out analysis.",
                     },
                     {
-                        "Assumption": "Current demo is a 35-zone structured screening dataset",
-                        "Decision Connection": "Not the final reconciled 44/54-zone universe; denominators and coverage need reconciliation.",
+                        "Assumption": "Current public demo uses 14 fully synthetic hypothetical-zone records",
+                        "Decision Connection": "Do not generalize to Pakistan's full SEZ/EPZ universe without BOI/SEZA/FBR/legal reconciliation.",
                     },
                     {
                         "Assumption": "Cost-based support is temporary transition support only",
@@ -3690,7 +3725,7 @@ def render_kpi_assurance(frames: dict[str, pd.DataFrame]) -> None:
                 "zone_name",
                 "province",
                 "Activity Classification",
-                "Data Confidence",
+                "Source-data confidence",
                 "under_production_area_acres",
                 "under_construction_area_acres",
                 "vacant_area_acres",
@@ -3842,7 +3877,7 @@ def scenario_examples_table() -> pd.DataFrame:
                 "Why it matters": "Observed activity is not proof that SEZ treatment caused or accelerated investment.",
             },
             {
-                "Assumption change": "Data confidence drops below threshold",
+                "Assumption change": "Source-data confidence drops below threshold",
                 "Likely treatment change": "More data required",
                 "Why it matters": "Fiscal, legal, calibration, or pilot use needs source confidence above the selected gate.",
             },
@@ -4233,9 +4268,9 @@ if page == "Executive Triage":
     render_executive_view(frames, summary, display_recommendations)
 elif page == "Case Review":
     render_case_review(frames, reason_codes, display_recommendations)
-elif page == "Data Confidence":
+elif page == "Source-Data Confidence":
     render_data_confidence_mvp(frames, summary)
-elif page == "Export":
+elif page == "Work-Product Exports":
     render_export_memo(frames, summary, reason_codes, display_recommendations)
 elif page == "About / Limitations":
     render_about_limitations(summary)

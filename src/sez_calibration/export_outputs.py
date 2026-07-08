@@ -153,7 +153,7 @@ def build_summary(
             "Recommendations are provisional and demo-only.",
             "Legal fields are placeholders pending D4 legal review.",
             "Fiscal fields are placeholders pending D5/FBR/customs verification.",
-            "The current structured screening dataset is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
+            "The current public demo uses 14 fully synthetic hypothetical-zone records. Do not generalize to Pakistan's full SEZ/EPZ universe without BOI/SEZA/FBR/legal reconciliation.",
             "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
             "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
             "No tax rates or incentive awards are calculated.",

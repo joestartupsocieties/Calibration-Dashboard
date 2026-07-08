@@ -58,11 +58,28 @@ def test_synthetic_demo_has_diverse_pathways(tmp_path: Path, monkeypatch) -> Non
     assert treatments.nunique() >= 4
     for expected in [
         "Legal review required",
+        "Fiscal/FBR verification required",
         "More data required",
         "Sanction / withdrawal review",
-        "Potential pilot-review flag",
+        "Limited cost-based support review",
     ]:
         assert expected in treatment_text
+
+
+def test_sukkur_fiscal_case_routes_to_fbr_verification(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("SEZ_DATA_PROFILE", raising=False)
+    project_root = copy_synthetic_project(tmp_path)
+    result = run_pipeline(project_root, write_outputs=False)
+    recommendations = result["frames"]["recommendations"]
+    sukkur = recommendations[recommendations["zone_name"].astype(str).str.contains("Sukkur Fiscal Verification")]
+
+    assert len(sukkur) == 1
+    row = sukkur.iloc[0]
+    assert row["recommended_treatment"] == "Fiscal/FBR verification required"
+    assert row["provisional_treatment"] == "Fiscal/FBR verification required"
+    assert "D5/FBR fiscal exposure validation required" in row["open_validation_gates"]
+    assert "fiscal_exposure_missing" in row["hard_gates_triggered"]
+    assert not bool(row["possible_screen_candidate_flag"])
 
 
 def test_synthetic_demo_does_not_use_real_zone_names(tmp_path: Path, monkeypatch) -> None:

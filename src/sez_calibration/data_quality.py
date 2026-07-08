@@ -104,7 +104,7 @@ def run_data_quality_checks(zone_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Dat
         "source_scope",
         "critical",
         "Source digest and prior scaffold refer to different SEZ universes: 35 detected zone profile records / normalized indicator records, 44 notified zones, and 54 total including planning-stage zones.",
-        "Keep explicit source-universe flags and do not generalize 35-zone outputs to the full registry without reconciliation.",
+        "Keep explicit source-universe flags and do not generalize screening outputs to the full SEZ/EPZ universe without reconciliation.",
         "Comparability and denominator-sensitive policy conclusions may be wrong if universes are mixed.",
     )
     add(

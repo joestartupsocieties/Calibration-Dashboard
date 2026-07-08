@@ -59,7 +59,27 @@ def test_scenario_settings_are_developer_gated_from_default_nav():
 
     default_pages_block = app_text.split("PAGES = [", 1)[1].split("]", 1)[0]
     assert '"Scenario Settings"' not in default_pages_block
+    assert '"Source-Data Confidence"' in default_pages_block
+    assert '"Work-Product Exports"' in default_pages_block
+    assert '"Data Confidence"' not in default_pages_block
+    assert '"Export"' not in default_pages_block
     assert "if SHOW_ADVANCED_SCENARIOS:" in app_text
     assert 'PAGES.append("Scenario Settings")' in app_text
     assert "Advanced Model Settings" not in app_text
     assert "Scenario Settings require" not in recommendation_engine_text
+
+
+def test_default_export_page_has_no_selected_zone_note_flow():
+    repo_root = Path(__file__).resolve().parents[1]
+    app_text = (repo_root / "app.py").read_text(encoding="utf-8")
+    default_export_block = app_text.split("def render_export_memo(", 1)[1].split("def render_about_limitations", 1)[0]
+
+    assert "Full Excel Workbook" in default_export_block
+    assert "Download {first_label}" in default_export_block
+    for banned in [
+        "Selected-Zone Screening Note",
+        "Generate selected-zone screening note",
+        "Export Selected-Zone Explanation as Markdown",
+        "Export Selected-Zone Explanation as TXT",
+    ]:
+        assert banned not in default_export_block

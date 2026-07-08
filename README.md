@@ -1,12 +1,12 @@
 # SEZ Incentive Transition Triage
 
-Provisional decision-support for legal, fiscal, data-confidence, and pilot-readiness review.
+Provisional decision-support for legal, fiscal, source-data confidence, and pilot-readiness review.
 
 This repository is scoped to a demoable screening flow using fully synthetic hypothetical-zone records by default. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
 
 ## Demo Flow
 
-`zone data -> validation flags -> data confidence score -> activity classification -> legal/fiscal validation gates -> provisional treatment -> reason codes -> export`
+`zone data -> validation flags -> source-data confidence score -> activity classification -> legal/fiscal validation gates -> provisional treatment -> reason codes -> export`
 
 Hard guardrails:
 
@@ -82,8 +82,8 @@ Real policy use requires validated source inputs, including:
 
 1. Start on **Executive Triage**. Explain that the prototype organizes demo-zone records into provisional review pathways; it does not approve incentives or calculate tax/fiscal impacts.
 2. Open **Case Review**. Show one selected case as a human-review screening note with review pathway, reason codes, open gates, next action, validation owner, and human review required.
-3. Open **Data Confidence**. Explain how the app preserves uncertainty, validation flags, source-scope limits, and synthetic-data caveats instead of treating the dataset as complete.
-4. Open **Export**. Generate structured CSV/Excel outputs and a selected-zone screening note for review or follow-up work.
+3. Open **Source-Data Confidence**. Explain how the app preserves uncertainty, validation flags, source-scope limits, and synthetic-data caveats instead of treating the dataset as complete.
+4. Open **Work-Product Exports**. Download the Excel workbook first, then show the supporting structured CSV/JSON outputs.
 5. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, and no final legal, fiscal, tax, or incentive decision.
 
 ## Outputs

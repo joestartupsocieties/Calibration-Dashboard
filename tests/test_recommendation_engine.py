@@ -101,7 +101,8 @@ def test_non_compliant_developer_triggers_sanction_cure() -> None:
 def test_productive_missing_fiscal_does_not_produce_final_eligibility() -> None:
     result = rec(activity="operating_productive", fiscal_exposure="unknown", fiscal_confidence="missing")
     assert "final" not in result["recommended_treatment"].lower()
-    assert result["recommended_treatment"] == "Potential pilot-review flag - subject to D4/D5 validation"
+    assert result["recommended_treatment"] == "Fiscal/FBR verification required"
+    assert "fiscal_exposure_missing" in result["hard_gates_triggered"]
     assert result["illustrative_support_treatment"] == "More data required before treatment"
     assert result["fiscal_exposure_status"] == "Missing"
     assert result["additionality_confidence"] == "Unknown"
@@ -118,21 +119,21 @@ def test_productive_missing_fiscal_does_not_produce_final_eligibility() -> None:
 
 
 def test_vacant_activity_triggers_no_new_fiscal_support() -> None:
-    result = rec(activity="vacant_or_speculative")
+    result = rec(activity="vacant_or_speculative", fiscal_exposure="low", fiscal_confidence="verified")
     assert result["recommended_treatment"] == "Phase-out / no new support"
     assert result["illustrative_support_treatment"] == "No new fiscal support"
     assert "R07" in result["reason_codes"]
 
 
 def test_allotted_inactive_triggers_non_fiscal_facilitation() -> None:
-    result = rec(activity="allotted_but_inactive")
+    result = rec(activity="allotted_but_inactive", fiscal_exposure="low", fiscal_confidence="verified")
     assert result["recommended_treatment"] == "Non-fiscal support only"
     assert result["illustrative_support_treatment"] == "Non-fiscal support only"
     assert "R06" in result["reason_codes"]
 
 
 def test_construction_activity_triggers_transition_candidate() -> None:
-    result = rec(activity="moving_toward_production")
+    result = rec(activity="moving_toward_production", fiscal_exposure="low", fiscal_confidence="verified")
     assert result["recommended_treatment"] == "Temporary grandfathering / transition review"
     assert result["illustrative_support_treatment"] == "Legal/transition review"
     assert "R05" in result["reason_codes"]
@@ -242,6 +243,8 @@ def test_construction_toggle_excludes_transition_candidates() -> None:
         band="high",
         legal_risk="low",
         developer_status="compliant",
+        fiscal_exposure="low",
+        fiscal_confidence="verified",
         activity="moving_toward_production",
         scenario={"include_construction_stage_transition_candidates": False},
     )
@@ -266,6 +269,8 @@ def test_unknown_developer_compliance_setting_blocks_candidate() -> None:
 def test_strict_data_confidence_setting_applies_beyond_pilot_candidates() -> None:
     result = rec(
         band="medium",
+        fiscal_exposure="low",
+        fiscal_confidence="verified",
         activity="allotted_but_inactive",
         scenario={
             "minimum_data_confidence_band_for_pilot": "high",
@@ -324,7 +329,7 @@ def test_low_additionality_high_fiscal_steers_away_from_cost_based_support() -> 
         developer_status="compliant",
         enterprise_status="compliant",
         fiscal_exposure="high",
-        fiscal_confidence="preliminary",
+        fiscal_confidence="validated",
         additionality_confidence="Low",
         activity="operating_productive",
     )
