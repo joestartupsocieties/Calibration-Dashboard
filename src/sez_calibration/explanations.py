@@ -61,6 +61,10 @@ def _limitations(rec: pd.Series) -> str:
         items.append("Data confidence is too weak for reliable screening.")
     if rec.get("additionality_confidence") in {"Unknown", "Low"}:
         items.append("Additionality and net fiscal/economic impact require separate validation.")
+    if rec.get("counterfactual_status") in {"Not assessed", "Needs comparator"}:
+        items.append("Counterfactual or comparator evidence is not yet validated.")
+    if rec.get("incentive_effectiveness_confidence") in {"Unknown", "Weak"}:
+        items.append("Reported activity is not treated as proof of incentive effectiveness.")
     return " ".join(items)
 
 
@@ -110,6 +114,6 @@ def _memo(rec: pd.Series) -> str:
         placeholder_reason = "fiscal exposure is a placeholder"
 
     return (
-        f"{opening} However, final support cannot be recommended because {placeholder_reason}. "
+        f"{opening} However, binding treatment cannot be recommended because {placeholder_reason}. "
         "D4 legal review, D5 fiscal verification, FBR/customs data, and human review are required."
     )

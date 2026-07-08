@@ -24,14 +24,24 @@ RECOMMENDATION_COLUMNS = [
     "additionality_confidence",
     "incentive_effectiveness_confidence",
     "net_fiscal_economic_impact",
+    "counterfactual_status",
+    "displacement_risk",
+    "fiscal_return_confidence",
     "fiscal_exposure_status",
     "legal_status",
     "compliance_status",
     "provisional_treatment",
     "recommended_treatment",
+    "illustrative_incentive_treatment",
     "illustrative_support_treatment",
     "illustrative_instrument_options",
+    "illustrative_support_intensity",
+    "fiscal_cap",
+    "sunset",
+    "conditions_gates",
     "why",
+    "open_validation_gates",
+    "main_blockers",
     "blocking_validation_requirements",
     "data_gaps",
     "validator_owner",
@@ -55,28 +65,28 @@ PROVISIONAL_TREATMENTS = {
     "transition": "Temporary grandfathering / transition review",
     "non_fiscal": "Non-fiscal support only",
     "limited_cost": "Limited cost-based support review",
-    "pilot": "Potential pilot-review candidate",
+    "pilot": "Potential pilot-review flag - subject to D4/D5 validation",
     "phase_out": "Phase-out / no new support",
 }
 SUPPORT_TREATMENTS = {
     "none": "No new fiscal support",
     "non_fiscal": "Non-fiscal support only",
     "limited_cost": "Limited cost-based support review",
-    "grandfathering": "Temporary grandfathering subject to legal review",
-    "transition": "Transition / early-adoption review",
-    "pilot": "Pilot-review only",
-    "sanction": "Sanction / withdrawal review",
-    "more_data": "More data required before support decision",
+    "pilot": "Pilot-only cost-based support review",
+    "transition": "Legal/transition review",
+    "sanction": "Phase-out / sanction review",
+    "more_data": "More data required before treatment",
 }
 INSTRUMENT_OPTIONS = {
     "none": "None",
-    "capex": "CAPEX expensing review",
+    "capex": "Immediate expensing / CAPEX deduction review",
     "training": "Training deduction review",
     "rd": "R&D deduction review",
     "infrastructure": "Infrastructure-linked non-fiscal support",
-    "facilitation": "Regulatory / one-window / utilities facilitation only",
-    "grandfathering": "Grandfathering / transition treatment subject to legal review",
+    "facilitation": "Administrative facilitation / one-window support",
+    "tbd": "To be determined after D5/D6 validation",
 }
+SUPPORT_INTENSITIES = {"none": "None", "low": "Low", "medium": "Medium", "high": "High", "tbd": "Not determined"}
 BAND_RANK = {"do_not_use": 0, "low": 1, "medium": 2, "high": 3}
 
 
@@ -114,7 +124,7 @@ def apply_legal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, objec
         gates.append(
             _gate(
                 "high_legal_risk",
-                "High legal or contractual risk blocks treatment screening until D4 review is complete.",
+                "D4 legal review required: high legal or contractual risk.",
                 ["R01", "R14", "R17"],
                 "Legal team / BOI / SEZA",
             )
@@ -123,7 +133,7 @@ def apply_legal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, objec
         gates.append(
             _gate(
                 "legal_review_required",
-                "Legal classification is unknown or placeholder-based; D4 legal review is required.",
+                "D4 legal review required: legal classification is not yet validated.",
                 ["R14", "R02", "R20", "R17"],
                 "Legal team / BOI / SEZA",
             )
@@ -139,7 +149,7 @@ def apply_compliance_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, 
         gates.append(
             _gate(
                 "compliance_non_compliant",
-                "Developer or enterprise compliance concern requires sanction / withdrawal review.",
+                "Developer/enterprise compliance validation required: non-compliance concern flagged.",
                 ["R03", "R21", "R17"],
                 "SEZA / legal team",
             )
@@ -153,7 +163,7 @@ def apply_compliance_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, 
         gates.append(
             _gate(
                 "compliance_validation_required",
-                "Developer or enterprise compliance is not validated.",
+                "Developer/enterprise compliance validation required.",
                 ["R03", "R21", "R22", "R17"],
                 "SEZA / BOI",
                 blocking=bool(_record_value(record, "_treat_unknown_compliance_as_blocker")),
@@ -169,7 +179,7 @@ def apply_data_confidence_gate(record: pd.Series | dict[str, Any]) -> list[dict[
         gates.append(
             _gate(
                 "low_data_confidence",
-                "Data confidence is too low for fiscal or calibration use.",
+                "Data confidence low: more source-row verification is required before fiscal or calibration use.",
                 ["R08", "R19", "R17"],
                 "BOI / SEZA data team",
             )
@@ -185,7 +195,7 @@ def apply_fiscal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, obje
         gates.append(
             _gate(
                 "fiscal_exposure_missing",
-                "Fiscal exposure is missing or placeholder-based; D5/FBR/customs verification is required.",
+                "D5/FBR fiscal exposure validation required.",
                 ["R09", "R13", "R17"],
                 "FBR / Finance / D5 team",
             )
@@ -194,7 +204,7 @@ def apply_fiscal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, obje
         gates.append(
             _gate(
                 "high_fiscal_exposure",
-                "Reported fiscal exposure is high and requires D5/FBR validation before treatment screening.",
+                "D5/FBR fiscal exposure validation required: reported fiscal exposure is high.",
                 ["R10", "R13", "R17"],
                 "FBR / Finance / D5 team",
             )
@@ -204,24 +214,60 @@ def apply_fiscal_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, obje
 
 def apply_additionality_gate(record: pd.Series | dict[str, Any]) -> list[dict[str, object]]:
     additionality = _record_text(record, "additionality_confidence") or infer_additionality_confidence(record).lower()
+    counterfactual = _record_text(record, "counterfactual_status") or infer_counterfactual_status(record).lower()
+    net_impact = _record_text(record, "net_fiscal_economic_impact") or infer_net_fiscal_economic_impact(record).lower()
+    effectiveness = (
+        _record_text(record, "incentive_effectiveness_confidence")
+        or infer_incentive_effectiveness_confidence(record).lower()
+    )
     activity = _normalized_activity(record)
     gates: list[dict[str, object]] = []
-    if additionality in {"", "unknown"}:
+    if additionality in {"", "unknown", "low"}:
         gates.append(
             _gate(
                 "additionality_uncertain",
-                "Additionality is not validated; reported activity is not proof that incentives caused the activity.",
-                ["R11", "R17"],
+                "Additionality validation required: reported activity is not proof that incentives caused the activity.",
+                ["R11", "R23", "R24", "R25", "R17"],
                 "REMIT / Finance / BOI",
                 blocking=False,
             )
         )
-    elif activity in {"vacant_or_speculative", "allotted_but_inactive"}:
+    if counterfactual in {"", "not assessed", "not_assessed", "needs comparator", "needs_comparator"}:
+        gates.append(
+            _gate(
+                "counterfactual_not_assessed",
+                "Counterfactual validation required: comparator or baseline has not been assessed.",
+                ["R23", "R17"],
+                "REMIT / Finance / BOI",
+                blocking=False,
+            )
+        )
+    if net_impact in {"", "unknown"}:
+        gates.append(
+            _gate(
+                "net_impact_unknown",
+                "Net fiscal/economic impact validation required.",
+                ["R24", "R17"],
+                "Finance / FBR / REMIT",
+                blocking=False,
+            )
+        )
+    if effectiveness in {"", "unknown", "weak"}:
+        gates.append(
+            _gate(
+                "incentive_effectiveness_uncertain",
+                "Incentive-effectiveness validation required.",
+                ["R25", "R17"],
+                "REMIT / BOI / SEZA",
+                blocking=False,
+            )
+        )
+    if activity in {"vacant_or_speculative", "allotted_but_inactive"}:
         gates.append(
             _gate(
                 "weak_incentive_effectiveness_evidence",
-                "Vacancy, idle land, or allotment-only movement is weak evidence of incentive effectiveness.",
-                ["R06", "R07", "R11", "R16", "R17"],
+                "Additionality validation required: vacancy, idle land, boundary-wall-only status, or allotment-only movement is weak evidence of incentive effectiveness.",
+                ["R06", "R07", "R11", "R16", "R23", "R25", "R17"],
                 "REMIT / BOI / SEZA",
                 blocking=False,
             )
@@ -267,6 +313,10 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         return PROVISIONAL_TREATMENTS["sanction"]
     if _has_gate(gates, "high_legal_risk"):
         return PROVISIONAL_TREATMENTS["legal"]
+    if _low_additionality_high_fiscal(record):
+        if activity in {"vacant_or_speculative", "allotted_but_inactive", "unclear"}:
+            return PROVISIONAL_TREATMENTS["phase_out"]
+        return PROVISIONAL_TREATMENTS["non_fiscal"]
     if _has_gate(gates, "scenario_legal_low_risk_required"):
         return PROVISIONAL_TREATMENTS["legal"]
     if _has_gate(gates, "scenario_fiscal_data_required"):
@@ -275,6 +325,14 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         return PROVISIONAL_TREATMENTS["more_data"]
     if _has_gate(gates, "scenario_unknown_developer_compliance_blocker"):
         return PROVISIONAL_TREATMENTS["more_data"]
+    if to_bool(_record_value(record, "_prefer_non_fiscal_when_additionality_uncertain")):
+        additionality = infer_additionality_confidence(record)
+        fiscal_exposure = _record_text(record, "fiscal_exposure_level")
+        if additionality in {"Unknown", "Low"} or fiscal_exposure == "high":
+            if activity == "vacant_or_speculative":
+                return PROVISIONAL_TREATMENTS["phase_out"]
+            if activity in {"operating_productive", "moving_toward_production", "allotted_but_inactive", "unclear"}:
+                return PROVISIONAL_TREATMENTS["non_fiscal"]
     if activity == "vacant_or_speculative":
         return PROVISIONAL_TREATMENTS["phase_out"]
     if activity == "allotted_but_inactive":
@@ -304,13 +362,19 @@ def generate_illustrative_support_treatment(
     if treatment == PROVISIONAL_TREATMENTS["sanction"]:
         return SUPPORT_TREATMENTS["sanction"]
     if treatment == PROVISIONAL_TREATMENTS["legal"]:
-        return SUPPORT_TREATMENTS["grandfathering"]
+        return SUPPORT_TREATMENTS["transition"]
+    if treatment == PROVISIONAL_TREATMENTS["fiscal"]:
+        return SUPPORT_TREATMENTS["more_data"]
     if treatment == PROVISIONAL_TREATMENTS["phase_out"]:
         return SUPPORT_TREATMENTS["none"]
     if treatment == PROVISIONAL_TREATMENTS["non_fiscal"]:
         return SUPPORT_TREATMENTS["non_fiscal"]
     if treatment == PROVISIONAL_TREATMENTS["transition"] or activity == "moving_toward_production":
         return SUPPORT_TREATMENTS["transition"]
+    if infer_additionality_confidence(record) == "Low":
+        return SUPPORT_TREATMENTS["non_fiscal"]
+    if infer_additionality_confidence(record) == "Unknown":
+        return SUPPORT_TREATMENTS["more_data"]
     if treatment == PROVISIONAL_TREATMENTS["limited_cost"] and not _legal_or_fiscal_unresolved(gates):
         return SUPPORT_TREATMENTS["limited_cost"]
     return SUPPORT_TREATMENTS["pilot"]
@@ -342,6 +406,10 @@ def get_validator_owner(record: pd.Series | dict[str, Any], gates: list[dict[str
 def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any]) -> dict[str, object]:
     record = row.copy()
     record["_treat_unknown_compliance_as_blocker"] = to_bool(scenario.get("treat_unknown_developer_compliance_as_blocker"))
+    record["_prefer_non_fiscal_when_additionality_uncertain"] = to_bool(
+        scenario.get("prefer_non_fiscal_when_additionality_uncertain")
+    )
+    record["_diagnostic_only"] = to_bool(scenario.get("diagnostic_only"))
     record["_source_scope_issue"] = _has_source_scope_issue(row, issue_df)
 
     activity = _normalized_activity(record)
@@ -350,7 +418,17 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
     fiscal_exposure = _record_text(row, "fiscal_exposure_level") or "unknown"
     fiscal_status = _record_text(row, "fiscal_data_status") or "missing"
     additionality = infer_additionality_confidence(record)
+    incentive_effectiveness = infer_incentive_effectiveness_confidence(record)
+    net_impact = infer_net_fiscal_economic_impact(record)
+    counterfactual = infer_counterfactual_status(record)
+    displacement = infer_displacement_risk(record)
+    fiscal_return = infer_fiscal_return_confidence(record)
     record["additionality_confidence"] = additionality
+    record["incentive_effectiveness_confidence"] = incentive_effectiveness
+    record["net_fiscal_economic_impact"] = net_impact
+    record["counterfactual_status"] = counterfactual
+    record["displacement_risk"] = displacement
+    record["fiscal_return_confidence"] = fiscal_return
 
     gates = (
         apply_data_confidence_gate(record)
@@ -365,6 +443,11 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
     provisional = generate_provisional_treatment(record, gates, score)
     support = generate_illustrative_support_treatment(record, gates, score)
     instruments = generate_illustrative_instruments(record, gates, support)
+    support_intensity = generate_support_intensity(provisional, support, gates)
+    fiscal_cap = generate_fiscal_cap(support, gates)
+    sunset = generate_duration_sunset(provisional, support)
+    conditions = generate_conditions_gates(record, gates)
+    main_blockers = generate_main_blockers(record, gates)
     why = generate_why(record, provisional, support, gates)
     blocking = generate_blocking_requirements(gates)
     data_gaps = generate_data_gaps(record, gates)
@@ -388,16 +471,26 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         "fiscal_exposure_level": fiscal_exposure,
         "fiscal_data_status": fiscal_status,
         "additionality_confidence": additionality,
-        "incentive_effectiveness_confidence": infer_incentive_effectiveness_confidence(record),
-        "net_fiscal_economic_impact": infer_net_fiscal_economic_impact(record),
+        "incentive_effectiveness_confidence": incentive_effectiveness,
+        "net_fiscal_economic_impact": net_impact,
+        "counterfactual_status": counterfactual,
+        "displacement_risk": displacement,
+        "fiscal_return_confidence": fiscal_return,
         "fiscal_exposure_status": fiscal_exposure_status(record),
         "legal_status": legal_status(record),
         "compliance_status": compliance_status(record),
         "provisional_treatment": provisional,
         "recommended_treatment": provisional,
+        "illustrative_incentive_treatment": support,
         "illustrative_support_treatment": support,
         "illustrative_instrument_options": "; ".join(instruments),
+        "illustrative_support_intensity": support_intensity,
+        "fiscal_cap": fiscal_cap,
+        "sunset": sunset,
+        "conditions_gates": " | ".join(conditions),
         "why": why,
+        "open_validation_gates": " | ".join(conditions),
+        "main_blockers": " | ".join(main_blockers),
         "blocking_validation_requirements": " | ".join(blocking) if blocking else "None beyond standard human review.",
         "data_gaps": " | ".join(data_gaps) if data_gaps else "No additional data gaps identified by the prototype.",
         "validator_owner": validator_owner,
@@ -443,6 +536,35 @@ def infer_net_fiscal_economic_impact(record: pd.Series | dict[str, Any]) -> str:
     return "Unknown"
 
 
+def infer_counterfactual_status(record: pd.Series | dict[str, Any]) -> str:
+    value = clean_text(_record_value(record, "counterfactual_status"))
+    if value:
+        return _title_status(
+            value,
+            {
+                "not_assessed": "Not assessed",
+                "needs_comparator": "Needs comparator",
+                "preliminary": "Preliminary",
+                "validated": "Validated",
+            },
+        )
+    return "Not assessed"
+
+
+def infer_displacement_risk(record: pd.Series | dict[str, Any]) -> str:
+    value = clean_text(_record_value(record, "displacement_risk"))
+    if value:
+        return _title_status(value, {"unknown": "Unknown", "low": "Low", "medium": "Medium", "high": "High"})
+    return "Unknown"
+
+
+def infer_fiscal_return_confidence(record: pd.Series | dict[str, Any]) -> str:
+    value = clean_text(_record_value(record, "fiscal_return_confidence"))
+    if value:
+        return _title_status(value, {"unknown": "Unknown", "weak": "Weak", "moderate": "Moderate", "strong": "Strong"})
+    return "Unknown"
+
+
 def fiscal_exposure_status(record: pd.Series | dict[str, Any]) -> str:
     exposure = _record_text(record, "fiscal_exposure_level") or "unknown"
     status = _record_text(record, "fiscal_data_status") or "missing"
@@ -452,7 +574,7 @@ def fiscal_exposure_status(record: pd.Series | dict[str, Any]) -> str:
         return "Preliminary"
     if exposure in {"unknown", "missing", ""} or status == "missing":
         return "Missing"
-    return "Placeholder"
+    return "Pending validation"
 
 
 def legal_status(record: pd.Series | dict[str, Any]) -> str:
@@ -477,7 +599,7 @@ def compliance_status(record: pd.Series | dict[str, Any]) -> str:
     if statuses & {"partial", "partially_compliant"}:
         return "Partially compliant"
     if statuses <= {"unknown", ""}:
-        return "Unknown"
+        return "Not yet validated"
     return "Requires validation"
 
 
@@ -492,16 +614,120 @@ def generate_illustrative_instruments(
     }:
         return [INSTRUMENT_OPTIONS["none"]]
     if support_treatment == SUPPORT_TREATMENTS["non_fiscal"]:
+        if _has_infrastructure_constraint(record):
+            return [INSTRUMENT_OPTIONS["infrastructure"]]
         return [INSTRUMENT_OPTIONS["facilitation"]]
     if support_treatment == SUPPORT_TREATMENTS["transition"]:
-        return [INSTRUMENT_OPTIONS["grandfathering"], INSTRUMENT_OPTIONS["infrastructure"], INSTRUMENT_OPTIONS["facilitation"]]
-    if support_treatment == SUPPORT_TREATMENTS["grandfathering"]:
-        return [INSTRUMENT_OPTIONS["grandfathering"]]
+        return [INSTRUMENT_OPTIONS["tbd"]]
     if support_treatment == SUPPORT_TREATMENTS["limited_cost"] and not _legal_or_fiscal_unresolved(gates):
-        return [INSTRUMENT_OPTIONS["capex"], INSTRUMENT_OPTIONS["training"], INSTRUMENT_OPTIONS["rd"]]
-    if activity == "operating_productive":
-        return [INSTRUMENT_OPTIONS["capex"], INSTRUMENT_OPTIONS["training"], INSTRUMENT_OPTIONS["facilitation"]]
+        return [INSTRUMENT_OPTIONS["capex"]]
+    if activity == "operating_productive" and support_treatment == SUPPORT_TREATMENTS["pilot"]:
+        return [INSTRUMENT_OPTIONS["tbd"]]
     return [INSTRUMENT_OPTIONS["facilitation"]]
+
+
+def generate_support_intensity(provisional_treatment: str, support_treatment: str, gates: list[dict[str, object]]) -> str:
+    if support_treatment in {
+        SUPPORT_TREATMENTS["none"],
+        SUPPORT_TREATMENTS["sanction"],
+        SUPPORT_TREATMENTS["more_data"],
+    }:
+        return SUPPORT_INTENSITIES["none"]
+    if _legal_or_fiscal_unresolved(gates):
+        return SUPPORT_INTENSITIES["tbd"]
+    if support_treatment == SUPPORT_TREATMENTS["non_fiscal"]:
+        return SUPPORT_INTENSITIES["low"]
+    if provisional_treatment == PROVISIONAL_TREATMENTS["limited_cost"]:
+        return SUPPORT_INTENSITIES["medium"]
+    if provisional_treatment == PROVISIONAL_TREATMENTS["pilot"]:
+        return SUPPORT_INTENSITIES["tbd"]
+    return SUPPORT_INTENSITIES["low"]
+
+
+def generate_fiscal_cap(support_treatment: str, gates: list[dict[str, object]]) -> str:
+    if _has_gate(gates, "fiscal_exposure_missing") or _has_gate(gates, "high_fiscal_exposure") or _has_gate(
+        gates, "scenario_fiscal_data_required"
+    ):
+        return "Pending D5 validation"
+    if support_treatment in {
+        SUPPORT_TREATMENTS["none"],
+        SUPPORT_TREATMENTS["non_fiscal"],
+        SUPPORT_TREATMENTS["sanction"],
+        SUPPORT_TREATMENTS["more_data"],
+    }:
+        return "Not applicable"
+    if support_treatment in {
+        SUPPORT_TREATMENTS["transition"],
+        SUPPORT_TREATMENTS["limited_cost"],
+        SUPPORT_TREATMENTS["pilot"],
+    }:
+        return "Cap required before policy use"
+    return "No cap set"
+
+
+def generate_duration_sunset(provisional_treatment: str, support_treatment: str) -> str:
+    if support_treatment == SUPPORT_TREATMENTS["pilot"]:
+        return "Pilot period only"
+    if support_treatment in {SUPPORT_TREATMENTS["transition"], SUPPORT_TREATMENTS["limited_cost"]}:
+        return "No later than 30 June 2035, subject to legal commitments"
+    if support_treatment in {
+        SUPPORT_TREATMENTS["none"],
+        SUPPORT_TREATMENTS["non_fiscal"],
+        SUPPORT_TREATMENTS["sanction"],
+        SUPPORT_TREATMENTS["more_data"],
+    }:
+        return "Not applicable"
+    if provisional_treatment == PROVISIONAL_TREATMENTS["transition"]:
+        return "Temporary only"
+    return "Not applicable"
+
+
+def generate_conditions_gates(record: pd.Series | dict[str, Any], gates: list[dict[str, object]]) -> list[str]:
+    conditions = [str(gate["label"]) for gate in gates]
+    conditions.extend(
+        [
+            "Additionality validation required.",
+            "Counterfactual or comparator evidence required.",
+            "Net fiscal/economic impact validation required.",
+            "Enterprise-level evidence required.",
+            "KPI and audit framework required.",
+            "Human review required.",
+        ]
+    )
+    if _normalized_activity(record) == "operating_productive":
+        conditions.append("Reported production requires source-row and enterprise-level verification.")
+    return _unique(conditions)
+
+
+def generate_main_blockers(record: pd.Series | dict[str, Any], gates: list[dict[str, object]]) -> list[str]:
+    blockers: list[str] = []
+    if _has_gate(gates, "high_legal_risk") or _has_gate(gates, "legal_review_required"):
+        blockers.append("Legal status not validated.")
+    if _has_gate(gates, "fiscal_exposure_missing"):
+        blockers.append("Fiscal exposure not yet validated.")
+    if _has_gate(gates, "high_fiscal_exposure"):
+        blockers.append("Fiscal exposure high.")
+    if _has_gate(gates, "additionality_uncertain") or _has_gate(gates, "weak_incentive_effectiveness_evidence"):
+        blockers.append("Additionality not established.")
+    if _has_gate(gates, "counterfactual_not_assessed"):
+        blockers.append("Counterfactual not assessed.")
+    if _has_gate(gates, "net_impact_unknown"):
+        blockers.append("Net fiscal/economic impact not yet validated.")
+    if _has_gate(gates, "incentive_effectiveness_uncertain"):
+        blockers.append("Incentive effectiveness not yet validated.")
+    if _record_text(record, "developer_compliance_status") in {"", "unknown"}:
+        blockers.append("Developer compliance not yet validated.")
+    if _record_text(record, "enterprise_compliance_status") in {"", "unknown"}:
+        blockers.append("Enterprise-level evidence missing.")
+    if _record_text(record, "displacement_risk") in {"", "unknown"}:
+        blockers.append("Displacement risk not yet validated.")
+    if _record_text(record, "fiscal_return_confidence") in {"", "unknown", "weak"}:
+        blockers.append("Fiscal return confidence weak or not yet validated.")
+    if _record_text(record, "data_confidence_band") in {"low", "do_not_use"}:
+        blockers.append("Data confidence low.")
+    if _record_value(record, "_source_scope_issue"):
+        blockers.append("Coverage or definition issue.")
+    return _unique(blockers) or ["No blocker cleared for decision use; human validation still required."]
 
 
 def generate_why(
@@ -512,7 +738,7 @@ def generate_why(
 ) -> str:
     zone_name = clean_text(_record_value(record, "zone_name")) or "This zone"
     activity = _normalized_activity(record)
-    confidence = _record_text(record, "data_confidence_band").replace("_", " ") or "unknown"
+    confidence = _record_text(record, "data_confidence_band").replace("_", " ") or "not yet validated"
     activity_text = {
         "operating_productive": "reported data shows production activity",
         "moving_toward_production": "reported data shows construction-stage movement, not operating production",
@@ -523,9 +749,14 @@ def generate_why(
     gate_text = "; ".join(str(gate["label"]) for gate in gates[:3]) or "standard human review still applies"
     return (
         f"{zone_name} receives a provisional treatment of {provisional_treatment} because {activity_text} "
-        f"and data confidence is {confidence}. The illustrative support treatment is {support_treatment}, "
-        "subject to validation and not a final policy decision. "
-        f"Key validation requirements are: {gate_text}."
+        f"and data confidence is {confidence}. The illustrative incentive treatment is {support_treatment}. "
+        "Observed activity may reflect real on-ground progress, but the framework does not infer causation. "
+        "Before fiscal support is considered, the team should test whether activity was caused or accelerated by SEZ treatment, "
+        "would have occurred anyway, or reflects relocation/reclassification. "
+        "This is a screening output only, subject to D4 legal review, D5/FBR fiscal verification, additionality validation, "
+        "and net-impact validation. "
+        f"Key validation requirements are: {gate_text}. Any cost-based support review is temporary transition support only "
+        "and must end no later than 30 June 2035."
     )
 
 
@@ -541,13 +772,19 @@ def generate_data_gaps(record: pd.Series | dict[str, Any], gates: list[dict[str,
     if _has_gate(gates, "low_data_confidence"):
         gaps.append("Low or unusable confidence score; source data needs repair.")
     if _has_gate(gates, "fiscal_exposure_missing"):
-        gaps.append("Fiscal exposure, FBR, and customs data are missing or placeholder-based.")
+        gaps.append("Fiscal exposure, FBR, and customs data are not yet validated.")
     if _has_gate(gates, "legal_review_required") or _has_gate(gates, "high_legal_risk"):
         gaps.append("D4 legal classification, contractual position, and sunset/grandfathering status are unresolved.")
     if _has_gate(gates, "compliance_validation_required") or _has_gate(gates, "compliance_non_compliant"):
         gaps.append("Developer and enterprise compliance status requires validation.")
     if _has_gate(gates, "additionality_uncertain"):
         gaps.append("Additionality, incentive effectiveness, and net fiscal/economic impact are not validated.")
+    if _has_gate(gates, "counterfactual_not_assessed"):
+        gaps.append("Counterfactual or comparator evidence has not been assessed.")
+    if _has_gate(gates, "net_impact_unknown"):
+        gaps.append("Net fiscal/economic impact is not yet validated.")
+    if _has_gate(gates, "incentive_effectiveness_uncertain"):
+        gaps.append("Incentive effectiveness confidence is weak or not yet validated.")
     if _record_value(record, "_source_scope_issue"):
         gaps.append("Coverage / definition mismatch remains unresolved.")
     gaps.append("Enterprise-level data and exact source rows require verification.")
@@ -563,11 +800,14 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
     fiscal_status = _record_text(record, "fiscal_data_status") or "missing"
     minimum_band = clean_text(scenario.get("minimum_data_confidence_band_for_pilot")).lower() or "medium"
 
-    if _band_rank(band) < _band_rank(minimum_band) and activity in {"operating_productive", "moving_toward_production"}:
+    strict_confidence_for_all = to_bool(scenario.get("strict_data_confidence_for_all"))
+    if _band_rank(band) < _band_rank(minimum_band) and (
+        strict_confidence_for_all or activity in {"operating_productive", "moving_toward_production"}
+    ):
         gates.append(
             _gate(
                 "scenario_minimum_confidence_band",
-                "Advanced Model Settings require a higher confidence band before pilot-review screening.",
+                "Scenario Settings require a higher confidence band before pilot-review screening.",
                 ["R08", "R17"],
                 "BOI / REMIT",
             )
@@ -579,18 +819,18 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_legal_low_risk_required",
-                "Advanced Model Settings require low legal risk before pilot-review screening.",
+                "Scenario Settings require low legal risk before pilot-review screening.",
                 ["R14", "R17"],
                 "Legal team / BOI",
             )
         )
-    if to_bool(scenario.get("require_fiscal_data_for_pilot")) and (
-        fiscal_exposure in {"unknown", "missing", ""} or fiscal_status in {"missing", "unknown", ""}
-    ):
+    missing_fiscal_data = fiscal_exposure in {"unknown", "missing", ""} or fiscal_status in {"missing", "unknown", ""}
+    high_fiscal_block = fiscal_exposure == "high" and to_bool(scenario.get("block_high_fiscal_exposure"))
+    if (to_bool(scenario.get("require_fiscal_data_for_pilot")) and missing_fiscal_data) or high_fiscal_block:
         gates.append(
             _gate(
                 "scenario_fiscal_data_required",
-                "Advanced Model Settings require D5 fiscal data before pilot-review screening.",
+                "Scenario Settings require D5 fiscal validation before pilot-review screening.",
                 ["R09", "R13", "R17"],
                 "FBR / Finance / D5 team",
             )
@@ -599,7 +839,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_construction_excluded",
-                "Advanced Model Settings exclude construction-stage transition candidates.",
+                "Scenario Settings exclude construction-stage transition candidates.",
                 ["R05", "R17"],
                 "BOI / REMIT",
             )
@@ -610,7 +850,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
         gates.append(
             _gate(
                 "scenario_unknown_developer_compliance_blocker",
-                "Advanced Model Settings treat unknown developer compliance as a blocker.",
+                "Scenario Settings treat not-yet-validated developer compliance as a blocker.",
                 ["R03", "R17", "R21"],
                 "SEZA / BOI",
             )
@@ -627,8 +867,16 @@ def _support_ready(record: pd.Series | dict[str, Any], gates: list[dict[str, obj
         and _record_text(record, "fiscal_data_status") in {"preliminary", "verified", "validated"}
         and compliance_status(record) == "Compliant"
         and infer_additionality_confidence(record) in {"Medium", "High"}
+        and infer_counterfactual_status(record) in {"Preliminary", "Validated"}
+        and infer_incentive_effectiveness_confidence(record) in {"Moderate", "Strong"}
+        and infer_net_fiscal_economic_impact(record) in {"Mixed", "Positive"}
+        and infer_fiscal_return_confidence(record) in {"Moderate", "Strong"}
         and not _legal_or_fiscal_unresolved(gates)
     )
+
+
+def _low_additionality_high_fiscal(record: pd.Series | dict[str, Any]) -> bool:
+    return infer_additionality_confidence(record) == "Low" and _record_text(record, "fiscal_exposure_level") == "high"
 
 
 def _pilot_review_flag(provisional_treatment: str, gates: list[dict[str, object]]) -> bool:
@@ -657,7 +905,7 @@ def _legal_action(record: pd.Series | dict[str, Any], gates: list[dict[str, obje
     if _has_gate(gates, "high_legal_risk"):
         return "Complete D4 legal review before any treatment category is used."
     if _has_gate(gates, "legal_review_required"):
-        return "Replace placeholder legal fields with D4 legal classification and sunset/grandfathering assessment."
+        return "Replace pending legal fields with D4 legal classification and sunset/grandfathering assessment."
     return "Confirm no contractual, grandfathering, or legal sunset restriction before implementation."
 
 

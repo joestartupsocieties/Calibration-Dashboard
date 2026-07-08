@@ -115,7 +115,7 @@ def build_summary(
 ) -> dict[str, Any]:
     return {
         "version": "v0.5-lite",
-        "title": "v0.5-lite - SEZ Zone Triage and Calibration Support MVP",
+        "title": "SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype",
         "zone_records_loaded": int(len(zones)),
         "detected_zone_profile_records_from_source_digest": 35,
         "normalized_indicator_records_from_source_digest": 35,
@@ -136,7 +136,7 @@ def build_summary(
             "Recommendations are provisional and demo-only.",
             "Legal fields are placeholders pending D4 legal review.",
             "Fiscal fields are placeholders pending D5/FBR/customs verification.",
-            "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
+            "The current structured screening dataset is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
             "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
             "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
             "No tax rates or incentive awards are calculated.",
@@ -154,8 +154,8 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
                 "Legal fields are placeholders pending D4 legal review.",
                 "Fiscal exposure fields are placeholders pending D5/FBR/customs verification.",
                 "Enterprise and plot-level data are not yet fully loaded.",
-                "The normalized dataset covers 35 detected zone profile records and 35 normalized indicator records based on the source digest.",
-                "The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
+                "The structured screening dataset covers 35 detected zone profile records and 35 structured indicator records based on the source digest.",
+                "The current structured screening dataset is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.",
                 "Exact row-level verification should use the original workbook.",
                 "Recommendations are provisional and for demonstration only.",
                 "Any support-related output is subject to D4 legal review and D5 fiscal verification.",

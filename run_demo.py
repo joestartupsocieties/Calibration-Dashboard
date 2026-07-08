@@ -21,8 +21,8 @@ def main() -> None:
     print(f"Zones loaded: {summary['zone_records_loaded']}")
     print(f"Demo data used: {summary['demo_data_used']}")
     print(f"Placeholders created: {summary['placeholders_created']}")
-    print(f"Data-quality issues: {summary['data_quality_issue_count']}")
-    print(f"Contradictions: {summary['contradiction_count']}")
+    print(f"Validation flags: {summary['data_quality_issue_count']}")
+    print(f"Cross-source/status conflicts: {summary['contradiction_count']}")
     print(f"Recommendation records: {summary['recommendation_count']}")
     print("Confidence bands:")
     for band in ["high", "medium", "low", "do_not_use"]:

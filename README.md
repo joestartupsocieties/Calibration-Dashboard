@@ -1,87 +1,91 @@
-# SEZ Zone Triage and Calibration Support MVP
+# SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype
 
-v0.5-lite - demoable SEZ Zone Triage and Calibration Support MVP
+Decision-support prototype for SEZ fiscal exposure, legal/compliance triage, calibration logic, and pilot screening.
 
-This repo is intentionally scoped to a lightweight demo flow. It is not a full policy system, final tax model, or calibration rate optimizer.
+This repository is scoped to a demoable screening flow. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, and does not replace BOI, FBR, Finance, SEZA, legal, IMF, programme, or human review.
 
-Demo flow:
+## Demo Flow
 
-`zone data -> data quality checks -> data confidence score -> activity classification -> legal/fiscal placeholder gates -> provisional recommendation -> reason codes -> export`
+`zone data -> validation flags -> data confidence score -> activity classification -> legal/fiscal validation gates -> provisional treatment -> reason codes -> export`
 
 Hard guardrails:
 
-- Demo only.
-- No final legal, fiscal, or incentive decisions.
-- No final tax rates.
-- Any support-related output is subject to D4 legal review and D5 fiscal verification.
+- Prototype only.
+- Outputs are provisional and subject to validation.
+- Human review is required.
+- Any support-related output remains subject to D4 legal review and D5/FBR fiscal verification.
 - Any cost-based support is temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.
-- Current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.
+- The current source package is the 35-zone demo dataset, not the final reconciled 44/54-zone universe.
 
-## Dataset Scope
+## How To Run
 
-The current normalized dataset covers **35 detected zone profile records** and **35 normalized indicator records** based on the source digest. The source digest says the normalized CSV was created from detected zone profile rows and 2026 colonization metrics where reliable normalization was possible.
-
-Exact row-level verification should use the original workbook. This MVP preserves uncertainty, missing fields, source-scope mismatch, contradiction logs, and data-quality flags instead of pretending the normalized dataset is complete.
-
-## What It Does
-
-- Loads `data/SEZ_Key_Indicators_Normalized.csv`.
-- Normalizes inconsistent column names and preserves unknown fields.
-- Uses `data/legal_fiscal_placeholders.csv` for demo-only legal/fiscal placeholder gates.
-- Logs missing fields, impossible values, contradictions, and source-scope issues.
-- Scores data confidence from source reliability, completeness, consistency, cross-source placeholder scoring, and recency.
-- Classifies zones as productive, moving toward production, inactive, speculative/vacant, or unclear.
-- Applies placeholder gates before provisional recommendations.
-- Exports CSVs and a demo Excel workbook.
-- Provides a Streamlit demo interface.
-
-## What It Does Not Do
-
-- It does not calculate final tax liability.
-- It does not replace fiscal modelling, D4 legal review, D5/FBR/customs verification, or human review.
-- It does not make final policy decisions or grant incentives.
-- It does not calculate final deduction rates or final incentive decisions.
-- It does not include market distortion analysis, institutional role mapping, concept-note alignment, legislative sequencing, milestone mapping, or rate optimization.
-
-## Install
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Run CLI
+Run the data pipeline:
 
 ```bash
 python run_demo.py
 ```
 
-Expected output includes loaded zone count, data-quality issues, confidence scores, provisional recommendations, possible screen candidates, and the output folder path.
-
-## Run Streamlit
+Run the Streamlit app:
 
 ```bash
 streamlit run app.py
 ```
 
+The app opens with Demo Mode on by default for a 3-5 minute walkthrough.
+
+## Demo And Source Data
+
+The current structured screening dataset covers 35 detected zone profile records and 35 normalized indicator records based on the source digest. The source digest says the CSV was created from detected zone profile rows and 2026 colonization metrics where reliable normalization was possible.
+
+Exact row-level verification should use the original workbook and source documents before policy use. The prototype preserves uncertainty, missing fields, source-scope mismatch, cross-source/status conflicts, and validation flags instead of treating the dataset as complete.
+
+If `data/SEZ_Key_Indicators_Normalized.csv` is missing, the pipeline creates a clearly marked synthetic demo dataset so the app can still run.
+
+## Data Needed For Real Use
+
+Real policy use requires validated source inputs, including:
+
+- BOI/SEZA zone master and plot-level records.
+- D4 legal classifications, development agreements, enterprise certificates, sunset clauses, and grandfathering or transition issues.
+- D5/FBR/Finance fiscal exposure data, tax paid, customs exemptions, incentive utilization, and fiscal-cost assumptions.
+- Enterprise-level evidence on production, construction, employment, exports, investment, CAPEX, and compliance.
+- Infrastructure and utility status from SEZA, utilities, developers, and field verification.
+- KPI assurance inputs, audit triggers, and monitoring evidence.
+- Additionality, counterfactual, displacement, and net fiscal/economic impact assessment.
+
+## Demo Script
+
+1. Start on Executive View and explain that the tool is a provisional decision-support layer, not a final decision system.
+2. Show Zone Explorer for the reported-production demo case and point out the clean zone summary and additionality caveat.
+3. Open Recommendation Engine and show provisional treatment, open validation gates, reason codes, calibration output, next action, validator, and human review.
+4. Switch to the low-data-confidence demo case and show why the output is more data required.
+5. Switch to the legal/fiscal review case and show D4 legal and D5/FBR validation requirements.
+6. Open Scenario Settings and compare Base, IMF strict triage, Data-quality conservative, and Pilot-readiness screen.
+7. Open Export, generate the selected-zone memo, and show the CSV/memo outputs.
+
 ## Outputs
 
-The demo writes:
+The pipeline writes local outputs to `outputs/`:
 
-- `outputs/zone_triage_prototype.csv`
-- `outputs/recommendation_explanations.csv`
-- `outputs/audit_flags.csv`
-- `outputs/data_quality_issue_log.csv`
-- `outputs/contradiction_log.csv`
-- `outputs/data_confidence_scores.csv`
-- `outputs/activity_classification.csv`
-- `outputs/field_completeness.csv`
-- `outputs/summary.json`
-- `outputs/sez_calibration_demo_outputs.xlsx`
+- `zone_triage_prototype.csv`
+- `recommendation_explanations.csv`
+- `audit_flags.csv`
+- `data_quality_issue_log.csv`
+- `contradiction_log.csv`
+- `data_confidence_scores.csv`
+- `activity_classification.csv`
+- `field_completeness.csv`
+- `summary.json`
+- `sez_calibration_demo_outputs.xlsx`
 
-## Known Limitations
+## Limitations
 
-Legal fields are placeholders pending D4 legal review. Fiscal exposure fields are placeholders pending D5/FBR/customs verification. Enterprise and plot-level data are not fully loaded. The current normalized data is the 35-zone demo dataset, not the final reconciled 44/54-zone universe. Recommendations are provisional and for demonstration only. Human review is mandatory.
+Legal, fiscal, compliance, enterprise-level, and additionality fields are not yet validated for policy use. Fiscal exposure and FBR/customs inputs remain pending D5 verification. Legal status remains pending D4 review. Reported production or construction is not proof of incentive effectiveness. Additionality and net fiscal/economic impact require separate validation.
 
-## Next Development Steps
-
-Future phases can add D4 legal classifications, D5 fiscal exposure outputs, canonical zone registry work, enterprise/plot-level outcome data, validated fiscal caps, and audit workflow. They are intentionally outside v0.5-lite.
+This prototype supports the explainable decision layer around fiscal cost analysis, calibration, legal review, and pilot screening. It is not a full policy system, final tax model, or calibration-rate optimizer.

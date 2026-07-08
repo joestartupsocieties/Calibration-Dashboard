@@ -26,6 +26,7 @@ def classify_activity(zone_df: pd.DataFrame) -> pd.DataFrame:
         allotted = to_float(zone.get("allotted_area_acres")) or 0.0
         industrial = to_float(zone.get("industrial_area_acres")) or 0.0
         vacant = to_float(zone.get("vacant_area_acres")) or 0.0
+        boundary_wall_only = to_float(zone.get("boundary_wall_only_area_acres")) or 0.0
         unsold = to_float(zone.get("unsold_area_acres")) or 0.0
         status_text = str(zone.get("operational_status") or "").strip().lower()
 
@@ -33,6 +34,7 @@ def classify_activity(zone_df: pd.DataFrame) -> pd.DataFrame:
         prod_allotted = safe_divide(production, allotted)
         construction_allotted = safe_divide(construction, allotted)
         vacant_allotted = safe_divide(vacant, allotted)
+        boundary_allotted = safe_divide(boundary_wall_only, allotted)
         colonization = safe_divide(allotted, industrial)
         unsold_share = safe_divide(unsold, industrial)
 
@@ -43,6 +45,7 @@ def classify_activity(zone_df: pd.DataFrame) -> pd.DataFrame:
             prod_allotted,
             construction_allotted,
             vacant_allotted,
+            boundary_allotted,
             unsold_share,
             status_text,
         )
@@ -73,17 +76,26 @@ def _classify(
     prod_allotted: float | None,
     construction_allotted: float | None,
     vacant_allotted: float | None,
+    boundary_allotted: float | None,
     unsold_share: float | None,
     status_text: str = "",
 ) -> tuple[str, str]:
     if "under construction" in status_text and "under production" not in status_text and "production" not in status_text:
         return "moving_toward_production", "Reported status is under construction, so the zone is treated as construction-stage rather than operating."
+    if "under production" in status_text or "commercial production" in status_text:
+        return "operating_productive", "Reported status indicates production or commercial production."
     if production > 0 or (prod_allotted is not None and prod_allotted >= 0.10):
         return "operating_productive", "Reported production area or production share meets the screening threshold."
     if construction > 0 or (construction_allotted is not None and construction_allotted >= 0.10):
         return "moving_toward_production", "Construction area or construction share meets the transition threshold."
-    if (vacant_allotted is not None and vacant_allotted >= 0.50) or (unsold_share is not None and unsold_share >= 0.50):
-        return "vacant_or_speculative", "Vacant allotted land or unsold industrial land share is high."
+    if (
+        "vacant" in status_text
+        or "boundary" in status_text
+        or (vacant_allotted is not None and vacant_allotted >= 0.50)
+        or (boundary_allotted is not None and boundary_allotted > 0)
+        or (unsold_share is not None and unsold_share >= 0.50)
+    ):
+        return "vacant_or_speculative", "Vacant, boundary-wall-only, or unsold land evidence is high."
     if allotted > 0 and production == 0 and construction == 0:
         return "allotted_but_inactive", "Land is allotted but no production or construction area is reported."
     return "unclear", "Available data do not support a clear activity category."

@@ -30,9 +30,24 @@ EXPECTED_ZONE_COLUMNS = [
     "water_status",
     "wastewater_status",
     "roads_status",
+    "additionality_confidence",
+    "incentive_effectiveness_confidence",
+    "net_fiscal_economic_impact",
+    "counterfactual_status",
+    "displacement_risk",
+    "fiscal_return_confidence",
     "source_file",
     "source_row",
 ]
+
+PLACEHOLDER_FIELDS = {
+    "additionality_confidence": "Unknown",
+    "incentive_effectiveness_confidence": "Unknown",
+    "net_fiscal_economic_impact": "Unknown",
+    "counterfactual_status": "Not assessed",
+    "displacement_risk": "Unknown",
+    "fiscal_return_confidence": "Unknown",
+}
 
 NUMERIC_FIELDS = [
     "total_area_acres",
@@ -82,6 +97,10 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     for field in EXPECTED_ZONE_COLUMNS:
         if field not in df.columns:
             df[field] = pd.NA
+
+    for field, placeholder in PLACEHOLDER_FIELDS.items():
+        df[field] = df[field].fillna("").astype(str).str.strip()
+        df[field] = df[field].where(df[field] != "", placeholder)
 
     for field in NUMERIC_FIELDS:
         df[field] = pd.to_numeric(df[field], errors="coerce")

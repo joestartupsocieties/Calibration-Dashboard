@@ -22,3 +22,15 @@ def test_allotted_area_without_activity_gives_inactive() -> None:
 
 def test_high_vacant_share_gives_speculative() -> None:
     assert classify_activity_row({"zone_id": "Z1", "zone_name": "A", "allotted_area_acres": 10, "industrial_area_acres": 20, "under_production_area_acres": 0, "under_construction_area_acres": 0, "vacant_area_acres": 8}) == "vacant_or_speculative"
+
+
+def test_commercial_production_status_gives_operating_productive() -> None:
+    assert classify_activity_row({"zone_id": "Z1", "zone_name": "A", "operational_status": "Commercial Production"}) == "operating_productive"
+
+
+def test_under_construction_status_is_not_operating_productive() -> None:
+    assert classify_activity_row({"zone_id": "Z1", "zone_name": "A", "operational_status": "Under Construction", "under_production_area_acres": 0}) == "moving_toward_production"
+
+
+def test_boundary_wall_only_status_is_idle_activity_evidence() -> None:
+    assert classify_activity_row({"zone_id": "Z1", "zone_name": "A", "operational_status": "Boundary-wall-only"}) == "vacant_or_speculative"
