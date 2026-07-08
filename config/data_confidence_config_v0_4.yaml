@@ -1,0 +1,15 @@
+version: v0.4
+weights:
+  source_reliability: 0.25
+  completeness: 0.25
+  internal_consistency: 0.20
+  cross_source_consistency: 0.20
+  recency: 0.10
+bands:
+  high: 0.80
+  medium: 0.60
+  low: 0.40
+  do_not_use: 0.00
+notes:
+  cross_source_default: 0.50
+  cross_source_note: Cross-source consistency is transparent placeholder scoring until full D4/D5 and source reconciliation tables are available.
