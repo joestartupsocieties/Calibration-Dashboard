@@ -20,7 +20,7 @@ RECOMMENDATION_COLUMNS = [
     "activity_category",
     "fiscal_exposure_level",
     "recommended_treatment",
-    "pilot_eligible_flag",
+    "possible_screen_candidate_flag",
     "hard_gates_triggered",
     "reason_codes",
     "next_actions",
@@ -87,15 +87,15 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         gates.append("high_legal_risk")
         codes.extend(["R01", "R02", "R12"])
     elif developer_compliance == "non_compliant":
-        treatment = f"Sanction/cure review before support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
+        treatment = f"Sanction/cure review before possible transition support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("developer_non_compliant")
         codes.extend(["R03", "R15", "R12", "R16", "R17"])
     elif activity == "vacant_or_speculative":
-        treatment = f"No new fiscal support; enforcement or land-use review; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
+        treatment = f"No new temporary transition support, subject to D4/D5 verification; enforcement or land-use review; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("vacant_or_speculative_activity")
         codes.extend(["R07", "R13", "R15", "R16", "R17"])
     elif activity == "allotted_but_inactive":
-        treatment = f"No new fiscal support; non-fiscal facilitation or cure plan only; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
+        treatment = f"No new temporary transition support, subject to D4/D5 verification; non-fiscal facilitation or cure plan only; {TEMPORARY_SUPPORT_CLAUSE}"
         gates.append("allotted_but_inactive_activity")
         codes.extend(["R06", "R13", "R14", "R16", "R17"])
     elif activity == "moving_toward_production":
@@ -154,7 +154,7 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         gates.append("scenario_unknown_developer_compliance_blocker")
         codes.extend(["R03", "R12", "R16", "R17"])
         if activity in {"operating_productive", "moving_toward_production"} and band != "do_not_use" and legal_risk != "high":
-            treatment = f"Developer compliance verification required before support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
+            treatment = f"Developer compliance verification required before possible transition support; {LEGAL_FISCAL_REVIEW_CLAUSE}; {TEMPORARY_SUPPORT_CLAUSE}"
 
     codes = _unique(codes)
     if len(codes) < 2:
@@ -177,7 +177,7 @@ def _recommend(row: pd.Series, issue_df: pd.DataFrame, scenario: dict[str, Any])
         "activity_category": activity,
         "fiscal_exposure_level": fiscal_exposure,
         "recommended_treatment": treatment,
-        "pilot_eligible_flag": bool(pilot),
+        "possible_screen_candidate_flag": bool(pilot),
         "hard_gates_triggered": "; ".join(_unique(gates)) if gates else "none",
         "reason_codes": "; ".join(codes),
         "next_actions": next_actions,

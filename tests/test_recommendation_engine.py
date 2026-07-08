@@ -64,7 +64,7 @@ def test_low_data_confidence_triggers_more_data_required() -> None:
 
 def test_non_compliant_developer_triggers_sanction_cure() -> None:
     result = rec(developer_status="non_compliant")
-    assert result["recommended_treatment"].startswith("Sanction/cure review before support")
+    assert result["recommended_treatment"].startswith("Sanction/cure review before possible transition support")
     assert "subject to D4 legal review and D5 fiscal verification" in result["recommended_treatment"]
     assert "all SEZ fiscal incentives phase out by 30 June 2035" in result["recommended_treatment"]
     assert "R15" in result["reason_codes"]
@@ -80,14 +80,13 @@ def test_productive_missing_fiscal_does_not_produce_final_eligibility() -> None:
 
 def test_vacant_activity_triggers_no_new_fiscal_support() -> None:
     result = rec(activity="vacant_or_speculative")
-    assert result["recommended_treatment"].startswith("No new fiscal support; enforcement or land-use review")
-    assert "subject to D4 legal review and D5 fiscal verification" in result["recommended_treatment"]
+    assert result["recommended_treatment"].startswith("No new temporary transition support, subject to D4/D5 verification")
     assert "R07" in result["reason_codes"]
 
 
 def test_allotted_inactive_triggers_non_fiscal_facilitation() -> None:
     result = rec(activity="allotted_but_inactive")
-    assert result["recommended_treatment"].startswith("No new fiscal support; non-fiscal facilitation or cure plan only")
+    assert result["recommended_treatment"].startswith("No new temporary transition support, subject to D4/D5 verification")
     assert "all SEZ fiscal incentives phase out by 30 June 2035" in result["recommended_treatment"]
     assert "R06" in result["reason_codes"]
 
@@ -124,7 +123,7 @@ def test_low_legal_risk_setting_blocks_non_low_pilot_candidate() -> None:
         fiscal_confidence="verified",
         scenario={"require_legal_low_risk_for_pilot": True},
     )
-    assert not bool(result["pilot_eligible_flag"])
+    assert not bool(result["possible_screen_candidate_flag"])
     assert "scenario_legal_low_risk_required" in result["hard_gates_triggered"]
 
 
@@ -137,7 +136,7 @@ def test_d5_fiscal_setting_blocks_missing_fiscal_candidate() -> None:
         fiscal_confidence="missing",
         scenario={"require_fiscal_data_for_pilot": True},
     )
-    assert not bool(result["pilot_eligible_flag"])
+    assert not bool(result["possible_screen_candidate_flag"])
     assert "scenario_fiscal_data_required" in result["hard_gates_triggered"]
 
 
@@ -150,7 +149,7 @@ def test_minimum_high_confidence_setting_blocks_medium_candidate() -> None:
         fiscal_confidence="verified",
         scenario={"minimum_data_confidence_band_for_pilot": "high"},
     )
-    assert not bool(result["pilot_eligible_flag"])
+    assert not bool(result["possible_screen_candidate_flag"])
     assert "scenario_minimum_confidence_band" in result["hard_gates_triggered"]
 
 
@@ -175,6 +174,6 @@ def test_unknown_developer_compliance_setting_blocks_candidate() -> None:
         fiscal_confidence="verified",
         scenario={"treat_unknown_developer_compliance_as_blocker": True},
     )
-    assert not bool(result["pilot_eligible_flag"])
+    assert not bool(result["possible_screen_candidate_flag"])
     assert "scenario_unknown_developer_compliance_blocker" in result["hard_gates_triggered"]
-    assert result["recommended_treatment"].startswith("Developer compliance verification required before support")
+    assert result["recommended_treatment"].startswith("Developer compliance verification required before possible transition support")

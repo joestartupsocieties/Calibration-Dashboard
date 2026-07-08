@@ -10,8 +10,8 @@ R09: Fiscal exposure missing; D5/FBR/customs verification required
 R10: Possible pilot screen candidate
 R11: Infrastructure or utility constraint may explain underperformance
 R12: Human review required
-R13: No final fiscal support can be recommended from current data
-R14: Non-fiscal support or facilitation may be more appropriate
+R13: Temporary transition support, subject to D4/D5 verification, cannot be recommended from current data
+R14: Non-fiscal facilitation may be more appropriate
 R15: Sanction/cure review may be required
 R16: Any cost-based support must be temporary and end by 30 June 2035
 R17: Subject to D4 legal review and D5 fiscal verification

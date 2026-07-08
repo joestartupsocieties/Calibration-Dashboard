@@ -15,7 +15,7 @@ from sez_calibration.explanations import split_reason_codes  # noqa: E402
 from sez_calibration.recommendation_engine import load_reason_codes  # noqa: E402
 
 
-UI_CACHE_VERSION = "v0.5-lite-five-page-ui-2026-07-08"
+UI_CACHE_VERSION = "v0.5-lite-professional-demo-language-2026-07-08"
 CONFIDENCE_BANDS = ["medium", "high"]
 POSTURE_DEFAULTS = {
     "Screening Mode": {
@@ -118,6 +118,34 @@ def decode_reason_codes(codes: object, reason_codes: dict[str, str]) -> pd.DataF
     )
 
 
+GATE_LABELS = {
+    "do_not_use_data_confidence": "Data confidence below usable screening threshold",
+    "high_legal_risk": "D4 legal review required before treatment screening",
+    "developer_non_compliant": "Sanction/cure review may be required",
+    "vacant_or_speculative_activity": "High vacant or unsold land share",
+    "allotted_but_inactive_activity": "Allotment-only movement / weak productive-use evidence",
+    "scenario_confidence_threshold": "Advanced model settings: confidence threshold not met",
+    "scenario_minimum_confidence_band": "Advanced model settings: minimum confidence band not met",
+    "scenario_legal_low_risk_required": "Advanced model settings: low legal risk required",
+    "scenario_fiscal_data_required": "Advanced model settings: D5 fiscal data required",
+    "scenario_construction_excluded": "Advanced model settings: construction-stage zones excluded",
+    "scenario_unknown_developer_compliance_blocker": "Advanced model settings: developer compliance must be known",
+}
+
+
+def format_gates(gates: object) -> str:
+    parts = split_reason_codes(gates)
+    if not parts or parts == ["none"]:
+        return "None"
+    return "; ".join(GATE_LABELS.get(part, part.replace("_", " ").title()) for part in parts)
+
+
+def recommendation_view(recommendations: pd.DataFrame) -> pd.DataFrame:
+    view = recommendations.copy()
+    view["hard_gates_display"] = view["hard_gates_triggered"].apply(format_gates)
+    return view
+
+
 def review_count(recommendations: pd.DataFrame) -> int:
     blank = pd.Series([""] * len(recommendations), index=recommendations.index)
     review_text = (
@@ -136,6 +164,7 @@ frames: dict[str, pd.DataFrame] = result["frames"]
 summary: dict[str, object] = result["summary"]
 reason_codes = load_reason_codes(ROOT / "config" / "reason_codes_v0_5_lite.yaml")
 recommendations = frames["recommendations"]
+display_recommendations = recommendation_view(recommendations)
 
 pages = [
     "Home",
@@ -150,18 +179,18 @@ st.title("SEZ Zone Triage and Calibration Support MVP")
 st.caption("v0.5-lite - demo only")
 
 if page == "Home":
-    st.warning("Demo only — no final legal, fiscal, or incentive decisions")
+    st.warning("Demo only - no final legal, fiscal, or incentive decisions")
     st.info("All SEZ fiscal incentives phase out by 30 June 2035")
     st.info("Cost-based support is temporary transition support only")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Zones loaded", summary["zone_records_loaded"])
     c2.metric("Data-quality issues", summary["data_quality_issue_count"])
-    c3.metric("Pilot screen candidates", summary["possible_pilot_screen_candidates"])
+    c3.metric("Possible screen candidates", summary["possible_pilot_screen_candidates"])
     c4.metric("Need legal/fiscal review", review_count(recommendations))
 
     st.dataframe(
-        recommendations[
+        display_recommendations[
             [
                 "zone_id",
                 "zone_name",
@@ -169,16 +198,16 @@ if page == "Home":
                 "data_confidence_band",
                 "activity_category",
                 "recommended_treatment",
-                "hard_gates_triggered",
+                "hard_gates_display",
                 "reason_codes",
             ]
-        ],
+        ].rename(columns={"hard_gates_display": "hard_gates"}),
         width="stretch",
         hide_index=True,
     )
 
 elif page == "Zone Explorer":
-    explorer = recommendations.merge(
+    explorer = display_recommendations.merge(
         frames["zones"],
         on=["zone_id", "zone_name", "province", "operational_status"],
         how="left",
@@ -219,9 +248,9 @@ elif page == "Zone Explorer":
                 "activity_category",
                 "data_confidence_band",
                 "recommended_treatment",
-                "hard_gates_triggered",
+                "hard_gates_display",
             ]
-        ],
+        ].rename(columns={"hard_gates_display": "hard_gates"}),
         width="stretch",
         hide_index=True,
     )
@@ -253,15 +282,18 @@ elif page == "Zone Explorer":
             "data_confidence_band",
             "activity_category",
             "recommended_treatment",
-            "hard_gates_triggered",
+            "hard_gates_display",
             "reason_codes",
             "source_file",
             "source_row",
         ]
         available_detail_columns = [column for column in detail_columns if column in filtered.columns]
         detail = filtered[filtered["zone_name"] == selected].iloc[0][available_detail_columns].dropna()
+        detail_dict = detail.to_dict()
+        if "hard_gates_display" in detail_dict:
+            detail_dict["hard_gates"] = detail_dict.pop("hard_gates_display")
         st.subheader("Selected-zone Detail")
-        st.json(detail.to_dict())
+        st.json(detail_dict)
 
 elif page == "Data Quality":
     st.warning("Current demo uses normalized 35-zone data, not final reconciled 44/54-zone universe")
@@ -286,11 +318,11 @@ elif page == "Recommendation Engine":
         "data_confidence_band",
         "activity_category",
         "recommended_treatment",
-        "hard_gates_triggered",
+        "hard_gates_display",
         "reason_codes",
         "human_review_status",
     ]
-    st.dataframe(recommendations[triage_columns], width="stretch", hide_index=True)
+    st.dataframe(display_recommendations[triage_columns].rename(columns={"hard_gates_display": "hard_gates"}), width="stretch", hide_index=True)
 
     selected = st.selectbox("Selected zone", recommendations["zone_name"].tolist())
     rec = recommendations[recommendations["zone_name"] == selected].iloc[0]
@@ -305,7 +337,7 @@ elif page == "Recommendation Engine":
     st.write(explanation["plain_english_explanation"])
 
     st.subheader("Hard Gates")
-    st.write(rec["hard_gates_triggered"])
+    st.write(format_gates(rec["hard_gates_triggered"]))
 
     st.subheader("Reason Codes")
     st.dataframe(decode_reason_codes(rec["reason_codes"], reason_codes), width="stretch", hide_index=True)

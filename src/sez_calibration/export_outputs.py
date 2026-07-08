@@ -87,7 +87,7 @@ def build_audit_flags(issues: pd.DataFrame, contradictions: pd.DataFrame, recomm
         severe_issues = severe_issues[severe_issues["severity"].astype(str).str.lower().isin(["critical", "high"])]
     rec_flags = recommendations[
         (recommendations["hard_gates_triggered"].astype(str) != "none")
-        | (recommendations["pilot_eligible_flag"].astype(bool))
+        | (recommendations["possible_screen_candidate_flag"].astype(bool))
     ][["zone_id", "zone_name", "hard_gates_triggered", "reason_codes", "recommended_treatment"]].copy()
     rec_flags["issue_id"] = [f"REC-{i:04d}" for i in range(1, len(rec_flags) + 1)]
     rec_flags["dataset_name"] = "zone_triage_prototype.csv"
@@ -127,7 +127,7 @@ def build_summary(
         "contradiction_count": int(len(contradictions)),
         "confidence_band_counts": confidence["data_confidence_band"].value_counts().to_dict(),
         "activity_category_counts": activity["activity_category"].value_counts().to_dict(),
-        "possible_pilot_screen_candidates": int(recommendations["pilot_eligible_flag"].astype(bool).sum()),
+        "possible_pilot_screen_candidates": int(recommendations["possible_screen_candidate_flag"].astype(bool).sum()),
         "more_data_required": int(recommendations["recommended_treatment"].astype(str).str.contains("More data required", case=False, na=False).sum()),
         "legal_review_required_or_placeholder": int(recommendations["required_legal_action"].astype(str).str.contains("legal", case=False, na=False).sum()),
         "recommendation_count": int(len(recommendations)),

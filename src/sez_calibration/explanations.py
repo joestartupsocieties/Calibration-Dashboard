@@ -29,13 +29,7 @@ def build_recommendation_explanations(recommendations: pd.DataFrame, reason_code
                 clean_text(rec.get("required_fbr_action")),
             ]
         )
-        explanation = (
-            f"{rec.get('zone_name')} receives the provisional treatment: {rec.get('recommended_treatment')}. "
-            f"The screening result reflects activity category `{rec.get('activity_category')}`, data confidence "
-            f"`{rec.get('data_confidence_band')}`, legal risk `{rec.get('legal_risk_level')}`, and fiscal exposure "
-            f"`{rec.get('fiscal_exposure_level')}`. This is a demo screening result only; human review, "
-            "D4 legal review, and D5/FBR fiscal verification remain part of the required trail."
-        )
+        explanation = _memo(rec)
         rows.append(
             {
                 "zone_id": rec.get("zone_id"),
@@ -66,3 +60,54 @@ def _limitations(rec: pd.Series) -> str:
     if rec.get("data_confidence_band") in {"low", "do_not_use"}:
         items.append("Data confidence is too weak for reliable screening.")
     return " ".join(items)
+
+
+def _memo(rec: pd.Series) -> str:
+    zone_name = clean_text(rec.get("zone_name")) or "This zone"
+    activity = clean_text(rec.get("activity_category"))
+    confidence = clean_text(rec.get("data_confidence_band"))
+    treatment = clean_text(rec.get("recommended_treatment")).rstrip(".")
+    legal_unknown = clean_text(rec.get("legal_risk_level")).lower() in {"", "unknown"}
+    fiscal_unknown = clean_text(rec.get("fiscal_exposure_level")).lower() in {"", "unknown"}
+
+    if activity == "operating_productive" and confidence in {"medium", "high"}:
+        because = "reported data shows production activity and medium/high data confidence"
+    elif activity == "moving_toward_production":
+        because = "reported data shows construction activity but not yet production"
+    elif activity == "vacant_or_speculative":
+        because = "reported data shows high vacant or unsold land share"
+    elif activity == "allotted_but_inactive":
+        because = "reported data shows allotment-only movement with weak evidence of productive use"
+    elif confidence in {"low", "do_not_use"}:
+        because = "data confidence is not strong enough for a pilot screen"
+    else:
+        because = "the current data does not support a clear activity classification"
+
+    treatment_lower = treatment.lower()
+    if "possible pilot screen candidate" in treatment_lower:
+        opening = f"{zone_name} is a possible pilot screen candidate because {because}."
+    elif "possible transition candidate" in treatment_lower:
+        opening = f"{zone_name} is a possible transition candidate because {because}."
+    elif "more data required" in treatment_lower:
+        opening = f"{zone_name} requires more data before a screening decision because {because}."
+    elif "human review required" in treatment_lower:
+        opening = f"{zone_name} requires human review because {because}."
+    elif "no new temporary transition support" in treatment_lower:
+        opening = f"{zone_name} does not currently pass the transition review screen because {because}."
+    elif "sanction/cure review" in treatment_lower:
+        opening = f"{zone_name} requires sanction/cure review because {because}."
+    elif "developer compliance verification" in treatment_lower:
+        opening = f"{zone_name} requires developer compliance verification because {because}."
+    else:
+        opening = f"{zone_name} needs additional review because {because}."
+
+    placeholder_reason = "legal classification and fiscal exposure are placeholders"
+    if legal_unknown and not fiscal_unknown:
+        placeholder_reason = "legal classification is a placeholder"
+    elif fiscal_unknown and not legal_unknown:
+        placeholder_reason = "fiscal exposure is a placeholder"
+
+    return (
+        f"{opening} However, final support cannot be recommended because {placeholder_reason}. "
+        "D4 legal review, D5 fiscal verification, FBR/customs data, and human review are required."
+    )

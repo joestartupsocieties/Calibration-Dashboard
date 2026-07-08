@@ -55,7 +55,7 @@ pip install -r requirements.txt
 python run_demo.py
 ```
 
-Expected output includes loaded zone count, data-quality issues, confidence scores, provisional recommendations, support screen candidates, and the output folder path.
+Expected output includes loaded zone count, data-quality issues, confidence scores, provisional recommendations, possible screen candidates, and the output folder path.
 
 ## Run Streamlit
 
