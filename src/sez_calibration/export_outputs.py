@@ -76,7 +76,7 @@ def run_pipeline(
     summary.update(placeholder_metadata)
     summary = _relativize_summary_paths(summary, root)
     if summary.get("data_profile") == "synthetic":
-        summary["title"] = "SEZ Incentive Transition Triage"
+        summary["title"] = "SEZ D6 Calibration Workbench"
         summary["dataset_scope_note"] = (
             "Default public demo uses fully synthetic hypothetical-zone records. Real policy use requires "
             "validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, "
@@ -87,7 +87,7 @@ def run_pipeline(
         summary["limitations"] = [
             "Default public demo uses fully synthetic hypothetical-zone records.",
             "Outputs are provisional screening outputs for human review.",
-            "Outputs do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, or legal counsel review.",
+            "Outputs do not approve incentives, set final tax rates, determine final validated fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, or legal counsel review.",
             "Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis.",
             "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
         ]
@@ -178,7 +178,7 @@ def build_summary(
         model_ready_count = int(readiness["model_ready"].astype(bool).sum())
     calibration_status = "blocked"
     if not annual.empty:
-        calibration_status = "calculated_for_gate_cleared_synthetic_enterprise_records"
+        calibration_status = "calculated_for_synthetic_model_ready_enterprise_records"
     elif not portfolio.empty and "calibration_status" in portfolio.columns:
         calibration_status = str(portfolio["calibration_status"].iloc[0])
     return {
@@ -190,7 +190,7 @@ def build_summary(
         "calibration_annual_row_count": int(len(annual)),
         "calibration_scenario_count": int(portfolio["scenario_id"].nunique()) if not portfolio.empty and "scenario_id" in portfolio.columns else 0,
         "calibration_parameter_range_count": int(len(parameter_ranges)),
-        "title": "SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype",
+        "title": "SEZ D6 Calibration Workbench",
         "zone_records_loaded": int(len(zones)),
         "detected_zone_profile_records_from_source_digest": 35,
         "normalized_indicator_records_from_source_digest": 35,
@@ -214,7 +214,7 @@ def build_summary(
             "The current public demo uses 14 fully synthetic hypothetical-zone records. Do not generalize to Pakistan's full SEZ/EPZ universe without BOI/SEZA/FBR/legal reconciliation.",
             "Any support-related output is subject to D4 legal review and D5 fiscal verification.",
             "Cost-based support language means temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.",
-            "No tax rates or incentive awards are calculated.",
+            "No final tax rates or incentive awards are calculated.",
         ],
     }
 

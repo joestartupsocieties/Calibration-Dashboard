@@ -27,14 +27,14 @@ def default_visible_copy() -> str:
 
 
 def test_ui_copy_has_required_guardrails():
-    assert APP_TITLE == "SEZ Incentive Transition Triage"
+    assert APP_TITLE == "SEZ D6 Calibration Workbench"
     assert DATA_PROFILE_LABEL == "Synthetic demo view"
     assert HUMAN_REVIEW_LABEL == "Human review required"
     assert DATASET_BASIS_LABEL == "Structured screening dataset"
     assert "workflow demonstration" in NON_DECISION_STATEMENT
     assert "does not approve incentives" in NON_DECISION_STATEMENT
-    assert "set tax rates" in NON_DECISION_STATEMENT
-    assert "determine fiscal cost" in NON_DECISION_STATEMENT
+    assert "set final tax rates" in NON_DECISION_STATEMENT
+    assert "determine final validated fiscal cost" in NON_DECISION_STATEMENT
     for authority in ["BOI", "FBR", "Finance Division", "SEZA", "Law Division", "IMF"]:
         assert authority in NON_DECISION_STATEMENT
     assert "fiscal modeller" in NON_DECISION_STATEMENT

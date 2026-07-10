@@ -42,7 +42,7 @@ try {
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await stableRender(page);
-  await assertPage(page, "Calibration Analysis", ["SEZ Incentive Transition Triage", "Synthetic demo view", "Gate-cleared enterprise records"]);
+  await assertPage(page, "One-Decision Calibration View", ["SEZ D6 Calibration Workbench", "Synthetic demo view", "D5 fiscal ceiling"]);
   await page.screenshot({ path: path.join(screenshotDir, "01_calibration_analysis_default.png"), fullPage: true });
   qaRows.push("01_calibration_analysis_default.png - title, metric cards, scenario comparison, annual results.");
 
@@ -121,9 +121,18 @@ async function openExpander(page, label) {
 }
 
 async function assertPage(page, heading, requiredText) {
+  const expected = [heading, ...requiredText];
+  await page.waitForFunction(
+    (texts) => {
+      const body = document.body?.innerText?.toLowerCase() || "";
+      return texts.some((text) => body.includes(String(text).toLowerCase()));
+    },
+    expected,
+    { timeout: 30_000 },
+  );
   const body = await page.locator("body").innerText();
   const bodyLower = body.toLowerCase();
-  const missing = [heading, ...requiredText].filter((text) => !bodyLower.includes(text.toLowerCase()));
+  const missing = expected.filter((text) => !bodyLower.includes(text.toLowerCase()));
   if (missing.length) {
     throw new Error(`Missing expected rendered text on ${heading}: ${missing.join(", ")}`);
   }

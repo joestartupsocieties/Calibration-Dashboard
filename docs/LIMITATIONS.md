@@ -1,18 +1,19 @@
 # Limitations
 
-This repo is for v0.5-lite only: a demoable SEZ incentive transition triage and D6 calibration-support prototype.
+This is a synthetic D6 calibration proof of concept. It demonstrates the analytical architecture and governed workflow for fiscal-envelope testing and D7 pilot handoff.
 
-The default public demo uses fully synthetic hypothetical-zone and enterprise records. These are not real BOI, SEZA, FBR, Finance, legal, developer, or enterprise records.
+It does not approve incentives, set final tax rates, determine final validated fiscal cost, select a pilot zone, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
 
-Outputs are provisional screening outputs for human review. They do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
+The default public demo uses hypothetical synthetic data. Real policy use requires validated BOI/SEZA/FBR/Finance/legal source data, D4 legal review, D5/FBR fiscal verification, enterprise-level evidence, KPI assurance, and additionality/counterfactual analysis.
 
-Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis.
+The older source-derived structured screening dataset covers 35 detected zone profile records and 35 indicator records based on the source digest. Exact row-level verification for any source-derived/internal use should rely on the original workbook and source documents before policy use.
 
-- Support-related language is subject to D4 legal review and D5/FBR fiscal verification.
-- Any cost-based support language is temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.
-- Reported production or construction is not proof of incentive effectiveness.
-- Additionality and net fiscal/economic impact require separate validation.
-- No final tax rates, fiscal costs, legal determinations, or incentive awards are calculated.
-- No pilot zone is selected by the model.
-- Scenario Settings and advanced model controls are hidden from the default demo path.
-- Market distortion analysis, institutional role mapping, legislative sequencing, milestone mapping, and full rate optimization are future phases, not v0.5-lite.
+Known unresolved areas:
+
+- D5 envelope is illustrative only.
+- Additionality assumptions are not econometric estimates.
+- Fiscal outputs are not final validated fiscal costs.
+- Administrative workload values are not validated institutional estimates.
+- No pilot zone or enterprise is selected by the model.
+- All cost-based support language is temporary transition support only and no later than 30 June 2035, subject to legal commitments and validation.
+

@@ -28,7 +28,7 @@ def main() -> None:
     print(f"Recommendation records: {summary['recommendation_count']}")
     print(f"D6 model version: {summary.get('fiscal_model_version', 'not available')}")
     print(f"D6 calibration status: {summary.get('calibration_status', 'not available')}")
-    print(f"D6 gate-cleared enterprise records: {summary.get('calibration_model_ready_enterprise_count', 0)}")
+    print(f"D6 synthetic model-ready enterprise records: {summary.get('calibration_model_ready_enterprise_count', 0)}")
     print("Confidence bands:")
     for band in ["high", "medium", "low", "do_not_use"]:
         print(f"  {band}: {confidence_counts.get(band, 0)}")

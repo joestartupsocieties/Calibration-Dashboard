@@ -1,17 +1,21 @@
 # How To Demo
 
-This is a synthetic D6 calibration-analysis demo. It does not make final legal, fiscal, tax, or incentive decisions, does not calculate final tax rates, and does not replace BOI, FBR, Finance Division, SEZA, legal, IMF, programme, fiscal-modelling, or human review.
+This is a synthetic D6 calibration workbench. It performs illustrative fiscal-cost calculations, but it does not determine final validated fiscal cost, approve incentives, set final tax rates, select a pilot zone, or replace BOI, FBR, Finance Division, SEZA, legal, IMF, programme, fiscal-modelling, or human review.
 
 ## Three-To-Five Minute Script
 
 1. Start the app with `streamlit run app.py`.
-2. Start on **Calibration Analysis**. Explain that the page compares status quo, accelerated removal, cost-based regime, combined transition/pilot, and no-SEZ-specific-incentive reference states for 2026-2035.
-3. Show the metric cards, scenario selector, annual results, deduction/carryforward trace, and revenue-neutral parameter ranges. Emphasize that these are synthetic workflow outputs.
-4. Open **Readiness Triage**. Explain that zones must pass data, legal, fiscal, compliance, additionality, and human-review gates before calibration outputs should be used.
-5. Open **Case Calibration**. Select a gate-cleared case, then a blocked case. For blocked cases, point out that no instrument, rate, cap, or sunset is classified until validation gates clear.
-6. Open **Evidence & Exports**. Show source-data confidence, model readiness, reconciliation checks, verification rules, and the Excel/CSV outputs.
-7. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, no final decision, and no pilot zone selected by the model.
+2. Open **Calibration Analysis**. State the decision question: what temporary cost-based parameter combinations could be tested within an illustrative D5 fiscal envelope?
+3. Point to the header metrics: synthetic model-ready records, D5 fiscal ceiling, modelled fiscal cost, envelope margin, and binding constraint.
+4. Select an instrument package. Adjust CAPEX rate, annual cap, threshold, utilization, or pilot uptake. Explain that the same pipeline recalculates outputs.
+5. Show the **Feasible Parameter Frontier**. Explain feasible and infeasible rows, tested fiscal cost, envelope margin, and binding constraint.
+6. Switch additionality case from base to low or high. Explain that this is sensitivity testing, not a causal estimate.
+7. Open verification requirements and D7 handoff. Explain the required evidence, owners, and recalibration triggers.
+8. Use **Case Calibration** only as a supporting memo view for one model-ready case and one blocked case.
+9. Use **Evidence & Exports** to show model-readiness, reconciliation, validation flags, and workbook/CSV outputs.
+10. Close on **About / Limitations**: synthetic proof of concept, D4/D5 validation required, no final policy decision.
 
-## Presenter Notes
+## Presenter Line
 
-The key message is not that the model already knows the answer. The demo shows how a D6 calibration layer can connect enterprise evidence, fiscal-cost assumptions, legal/fiscal gates, additionality uncertainty, revenue-neutral parameter ranges, and D7 pilot handoff requirements in one explainable workflow.
+“This is an executable synthetic proof of concept showing the analytical architecture and governed workflow for D6 calibration. It is not a validated fiscal model or final policy recommendation.”
+

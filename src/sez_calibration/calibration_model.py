@@ -9,16 +9,21 @@ import pandas as pd
 from .utils import clean_text, safe_divide, to_float
 
 
-MODEL_VERSION = "d6-thin-slice-v0.1"
+MODEL_VERSION = "d6-calibration-mvp-v0.2"
 YEARS = list(range(2026, 2036))
 SCENARIOS = {
-    "status_quo_to_2035": "Status quo to 2035",
-    "accelerated_removal": "Accelerated removal for non-compliant zones/enterprises",
-    "cost_based_regime": "Cost-based regime",
-    "combined_transition_pilot": "Combined transition plus pilot",
     "no_sez_specific_incentive": "No SEZ-specific incentive reference",
+    "status_quo_to_2035": "Status quo to 2035",
+    "accelerated_removal": "Accelerated removal for non-compliant enterprises",
+    "cost_based_regime": "Temporary cost-based deduction regime",
+    "combined_transition_pilot": "Combined transition plus pilot uptake",
 }
 ADDITIONALITY_CASES = ("low", "base", "high")
+INSTRUMENT_PACKAGES = {
+    "full": "CAPEX / R&D / training package",
+    "capex_only": "CAPEX-only package",
+    "rd_training": "R&D / training package",
+}
 
 
 @dataclass(frozen=True)
@@ -33,20 +38,30 @@ class CalibrationAssumptions:
     assessed_income_growth: float = 0.03
     eligible_expenditure_growth: float = 0.02
     ordinary_capex_depreciation_years: int = 5
-    capex_deduction_rate: float = 1.0
+    instrument_package: str = "full"
+    capex_deduction_rate: float = 0.75
     rd_super_deduction_total_rate: float = 1.5
     training_super_deduction_total_rate: float = 1.5
     utilization_rate: float = 0.80
-    annual_deduction_cap_pkr_m: float = 350.0
+    annual_deduction_cap_pkr_m: float = 18_000.0
+    qualifying_expenditure_threshold_pkr_m: float = 3_000.0
     carry_forward_years: int = 3
-    additionality_low: float = 0.10
-    additionality_base: float = 0.25
-    additionality_high: float = 0.40
+    additionality_low: float = 0.08
+    additionality_base: float = 0.22
+    additionality_high: float = 0.38
+    status_quo_additionality_factor: float = 0.35
     taxable_return_on_incremental_expenditure: float = 0.18
     additionality_income_lag_years: int = 1
-    admin_cost_per_enterprise_pkr_m: float = 2.0
+    admin_cost_per_enterprise_pkr_m: float = 0.0
+    admin_review_hours_per_claim: float = 24.0
+    admin_audit_hours_per_claim: float = 72.0
+    audit_sample_rate: float = 0.25
+    admin_cost_per_review_hour_pkr_m: float = 0.018
+    fixed_admin_cost_per_claim_pkr_m: float = 0.35
+    annual_fte_hours: float = 1_760.0
     status_quo_customs_annualization_years: int = 5
-    d5_fiscal_envelope_pkr_m: float | None = None
+    d5_fiscal_envelope_pkr_m: float | None = 30_000.0
+    fiscal_envelope_definition: str = "illustrative_D5_fiscal_ceiling_for_synthetic_cost_based_pilot"
     pilot_uptake_share: float = 0.60
     cohort_eligibility_policy: str = "unresolved"
 
@@ -88,19 +103,19 @@ def run_calibration_model(
     weights = _load_weights(weights_path)
     enterprises = prepare_enterprise_inputs(enterprises_raw, weights, zones, recommendations, assumptions)
     readiness = build_model_readiness(enterprises)
-    model_ready = enterprises[enterprises["model_ready"].astype(bool)].copy()
+    evidence_ready = enterprises[enterprises["evidence_model_ready"].astype(bool)].copy()
 
-    if model_ready.empty:
-        return _blocked_frames("no_gate_cleared_enterprises", assumptions_frame, scenario_definitions, verification, enterprises, readiness)
+    if evidence_ready.empty:
+        return _blocked_frames("no_synthetic_model_ready_enterprises", assumptions_frame, scenario_definitions, verification, enterprises, readiness)
 
-    annual = build_annual_results(model_ready, assumptions)
+    annual = build_annual_results(evidence_ready, assumptions)
     zone_aggregation = build_zone_aggregation(annual)
     portfolio_summary = build_portfolio_summary(annual, assumptions)
-    sensitivity = build_sensitivity(model_ready, assumptions)
-    parameter_ranges = build_parameter_ranges(model_ready, assumptions)
+    sensitivity = build_sensitivity(evidence_ready, assumptions)
+    parameter_ranges = build_parameter_ranges(evidence_ready, assumptions)
     reconciliation = build_reconciliation(enterprises, zones, assumptions)
     d7_handoff = build_d7_handoff(parameter_ranges, verification, assumptions)
-    excluded = enterprises[~enterprises["model_ready"].astype(bool)].copy()
+    excluded = enterprises[~enterprises["evidence_model_ready"].astype(bool)].copy()
 
     return {
         "calibration_enterprise_inputs": enterprises,
@@ -127,13 +142,16 @@ def prepare_enterprise_inputs(
     assumptions: CalibrationAssumptions,
 ) -> pd.DataFrame:
     df = enterprises_raw.copy()
+    numeric_fields = {
+        "employment_actual",
+        "tax_paid_pkr_m_2026",
+        "cit_foregone_pkr_m_2026",
+        "customs_exemption_pkr_m_cumulative",
+        "public_infrastructure_cost_pkr_m",
+        "land_concession_pkr_m",
+    }
     for col in df.columns:
-        if col.endswith(("_usd_m", "_pkr_m", "_pkr_m_2026", "_pkr_m_cumulative")) or col in {
-            "employment_actual",
-            "tax_paid_pkr_m_2026",
-            "cit_foregone_pkr_m_2026",
-            "customs_exemption_pkr_m_cumulative",
-        }:
+        if col.endswith(("_usd_m", "_pkr_m", "_pkr_m_2026", "_pkr_m_cumulative")) or col in numeric_fields:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     df = df.merge(weights, on=["enterprise_id", "zone_id"], how="left")
@@ -143,16 +161,35 @@ def prepare_enterprise_inputs(
     df["maturity_category"] = df.get("maturity_category", "").fillna("").astype(str)
     df["fx_pkr_per_usd"] = assumptions.fx_pkr_per_usd
 
-    usd_fields = ["investment_actual_usd_m", "exports_usd_m_2026", "domestic_sales_usd_m_2026", "capex_eligible_usd_m", "rd_spend_usd_m", "training_spend_usd_m"]
+    usd_fields = [
+        "investment_actual_usd_m",
+        "exports_usd_m_2026",
+        "domestic_sales_usd_m_2026",
+        "capex_eligible_usd_m",
+        "rd_spend_usd_m",
+        "training_spend_usd_m",
+    ]
     for field in usd_fields:
         if field in df.columns:
             df[f"{field.replace('_usd_m', '')}_pkr_m"] = pd.to_numeric(df[field], errors="coerce") * assumptions.fx_pkr_per_usd
 
+    for field in ["cit_foregone_pkr_m_2026", "tax_paid_pkr_m_2026", "customs_exemption_pkr_m_cumulative"]:
+        if field not in df.columns:
+            df[field] = pd.NA
+
     df["ordinary_benchmark_tax_pkr_m_2026"] = df[["cit_foregone_pkr_m_2026", "tax_paid_pkr_m_2026"]].sum(axis=1, min_count=1)
     df["baseline_assessed_income_pkr_m"] = df["ordinary_benchmark_tax_pkr_m_2026"] / assumptions.statutory_cit_rate
-    df["eligible_capex_pkr_m"] = df["capex_eligible_pkr_m"].fillna(0.0)
-    df["eligible_rd_pkr_m"] = df["rd_spend_pkr_m"].fillna(0.0)
-    df["eligible_training_pkr_m"] = df["training_spend_pkr_m"].fillna(0.0)
+    df["eligible_capex_pkr_m"] = df.get("capex_eligible_pkr_m", pd.Series(0.0, index=df.index)).fillna(0.0)
+    df["eligible_rd_pkr_m"] = df.get("rd_spend_pkr_m", pd.Series(0.0, index=df.index)).fillna(0.0)
+    df["eligible_training_pkr_m"] = df.get("training_spend_pkr_m", pd.Series(0.0, index=df.index)).fillna(0.0)
+    df["public_infrastructure_cost_pkr_m"] = pd.to_numeric(
+        df.get("public_infrastructure_cost_pkr_m", pd.Series(0.0, index=df.index)),
+        errors="coerce",
+    ).fillna(0.0)
+    df["land_concession_pkr_m"] = pd.to_numeric(
+        df.get("land_concession_pkr_m", pd.Series(0.0, index=df.index)),
+        errors="coerce",
+    ).fillna(0.0)
 
     rec_cols = [
         "zone_id",
@@ -176,10 +213,19 @@ def prepare_enterprise_inputs(
         & df["developer_compliance_status"].fillna("").astype(str).str.lower().eq("compliant")
         & df["enterprise_compliance_status"].fillna("").astype(str).str.lower().eq("compliant")
     )
+    df["financial_evidence_complete"] = (
+        df["baseline_assessed_income_pkr_m"].notna()
+        & df["tax_paid_pkr_m_2026"].notna()
+        & df["cit_foregone_pkr_m_2026"].notna()
+        & df["customs_exemption_pkr_m_cumulative"].notna()
+    )
     df["record_quality_status"] = df["data_confidence_band"].fillna("not assessed")
     df["substantive_evidence_status"] = "synthetic/unvalidated"
     df["epz_excluded"] = df["cohort_scope"].str.upper().eq("EPZ")
-    df["model_ready"] = df["legal_ready"] & df["fiscal_ready"] & df["compliance_ready"] & ~df["epz_excluded"] & df["baseline_assessed_income_pkr_m"].notna()
+    df["evidence_model_ready"] = df["financial_evidence_complete"] & ~df["epz_excluded"]
+    df["model_ready"] = df["evidence_model_ready"]
+    df["support_eligibility_status"] = df.apply(_support_eligibility_status, axis=1)
+    df["transition_treatment_status"] = df.apply(_transition_treatment_status, axis=1)
     df["blocked_reason"] = df.apply(_blocked_reason, axis=1)
     df["model_version"] = MODEL_VERSION
     return df
@@ -195,9 +241,13 @@ def build_model_readiness(enterprises: pd.DataFrame) -> pd.DataFrame:
         "legal_ready",
         "fiscal_ready",
         "compliance_ready",
+        "financial_evidence_complete",
+        "evidence_model_ready",
+        "model_ready",
+        "support_eligibility_status",
+        "transition_treatment_status",
         "record_quality_status",
         "substantive_evidence_status",
-        "model_ready",
         "blocked_reason",
     ]
     return enterprises[[c for c in cols if c in enterprises.columns]].copy()
@@ -218,6 +268,9 @@ def simulate_enterprise(
     scenario_id: str,
     additionality_case: str = "base",
 ) -> list[dict[str, Any]]:
+    if scenario_id == "combined_transition_pilot":
+        return _simulate_combined_enterprise(enterprise, assumptions, additionality_case)
+
     carryforward: list[dict[str, float | int]] = []
     rows: list[dict[str, Any]] = []
     base_income = _num(enterprise, "baseline_assessed_income_pkr_m")
@@ -226,92 +279,71 @@ def simulate_enterprise(
     training_base = _num(enterprise, "eligible_training_pkr_m")
     customs_cumulative = _num(enterprise, "customs_exemption_pkr_m_cumulative")
     indirect_base = _num(enterprise, "public_infrastructure_cost_pkr_m") + _num(enterprise, "land_concession_pkr_m")
-    additionality_share = assumptions.additionality_share(additionality_case)
+    weight = _num(enterprise, "aggregation_weight", 1.0)
+    support_can_claim = _support_can_claim(enterprise)
+    non_compliant = _is_non_compliant(enterprise)
 
     for year in YEARS:
         n = year - assumptions.projection_start_year
         discount_factor = 1 / ((1 + assumptions.discount_rate) ** n)
-        assessed_income = base_income * ((1 + assumptions.assessed_income_growth) ** n)
+        reference_income = base_income * ((1 + assumptions.assessed_income_growth) ** n)
         capex = capex_base * ((1 + assumptions.eligible_expenditure_growth) ** n)
         rd = rd_base * ((1 + assumptions.eligible_expenditure_growth) ** n)
         training = training_base * ((1 + assumptions.eligible_expenditure_growth) ** n)
-        qualifying_expenditure = capex + rd + training
         lag_n = n - assumptions.additionality_income_lag_years
-        prior_expenditure = 0.0 if lag_n < 0 else (capex_base + rd_base + training_base) * ((1 + assumptions.eligible_expenditure_growth) ** lag_n)
-        incremental_income = prior_expenditure * additionality_share * assumptions.taxable_return_on_incremental_expenditure
-        benchmark_income = assessed_income + incremental_income
-        benchmark_tax = max(0.0, benchmark_income * assumptions.statutory_cit_rate)
+        prior_growth = 0.0 if lag_n < 0 else ((1 + assumptions.eligible_expenditure_growth) ** lag_n)
+        prior_capex = capex_base * prior_growth
+        prior_rd = rd_base * prior_growth
+        prior_training = training_base * prior_growth
+        scenario_additionality = _scenario_additionality_share(enterprise, assumptions, scenario_id, additionality_case)
+        responsive_expenditure = _responsive_expenditure(prior_capex, prior_rd, prior_training, scenario_id, assumptions, support_can_claim)
+        incremental_income = responsive_expenditure * scenario_additionality * assumptions.taxable_return_on_incremental_expenditure
+        assessed_income = reference_income + incremental_income
+        reference_tax_liability = max(0.0, reference_income * assumptions.statutory_cit_rate)
+        benchmark_tax_liability = max(0.0, assessed_income * assumptions.statutory_cit_rate)
 
-        deduction_generated = deduction_used = carryforward_used = expired = closing_carryforward = 0.0
-        capex_incremental = rd_incremental = training_incremental = ordinary_capex_offset = 0.0
-        tax_due = benchmark_tax
-        direct_cit_expenditure = 0.0
+        deduction_data = _empty_deduction_data()
+        tax_due = benchmark_tax_liability
         customs_expenditure = 0.0
         admin_cost = 0.0
-        state = "Full CIT after 2035 with no SEZ-specific incentive"
+        review_hours = 0.0
+        fte_requirement = 0.0
+        state = "Ordinary CIT / no SEZ-specific incentive reference"
 
-        if scenario_id == "no_sez_specific_incentive":
-            state = "Full CIT / no SEZ-specific incentive reference"
-        elif scenario_id == "status_quo_to_2035":
-            state = "Current CIT holiday/protected treatment"
+        if scenario_id == "status_quo_to_2035":
+            state = "Protected status-quo treatment through the 2035 hard cap"
             if year <= assumptions.holiday_expiry_year:
-                protected_share = assumptions.current_holiday_exemption_share
-                tax_due = benchmark_tax * (1 - protected_share)
-            direct_cit_expenditure = max(0.0, benchmark_tax - tax_due)
+                tax_due = benchmark_tax_liability * (1 - assumptions.current_holiday_exemption_share)
             customs_expenditure = _annualized_customs(customs_cumulative, year, assumptions)
         elif scenario_id == "accelerated_removal":
-            state = "Accelerated removal for non-compliant zones/enterprises"
-            non_compliant = clean_text(enterprise.get("compliance_status")).lower() != "compliant"
             if non_compliant:
-                tax_due = benchmark_tax
-            elif year <= assumptions.holiday_expiry_year:
-                tax_due = benchmark_tax * (1 - assumptions.current_holiday_exemption_share)
-            direct_cit_expenditure = max(0.0, benchmark_tax - tax_due)
-            customs_expenditure = _annualized_customs(customs_cumulative, year, assumptions) if not non_compliant else 0.0
-        elif scenario_id == "cost_based_regime":
-            state = "Proposed CIT phase-in plus temporary cost-based deductions"
-            tax_due, deduction_data, carryforward = _apply_cost_based_deductions(
-                benchmark_income, benchmark_tax, capex, rd, training, carryforward, assumptions, year
-            )
-            deduction_generated = deduction_data["deduction_generated_pkr_m"]
-            deduction_used = deduction_data["deduction_used_pkr_m"]
-            carryforward_used = deduction_data["carryforward_used_pkr_m"]
-            expired = deduction_data["deduction_expired_pkr_m"]
-            closing_carryforward = deduction_data["closing_carryforward_pkr_m"]
-            capex_incremental = deduction_data["capex_incremental_deduction_pkr_m"]
-            rd_incremental = deduction_data["rd_incremental_deduction_pkr_m"]
-            training_incremental = deduction_data["training_incremental_deduction_pkr_m"]
-            ordinary_capex_offset = deduction_data["ordinary_capex_depreciation_offset_pkr_m"]
-            direct_cit_expenditure = max(0.0, benchmark_tax - tax_due)
-            admin_cost = assumptions.admin_cost_per_enterprise_pkr_m
-        elif scenario_id == "combined_transition_pilot":
-            state = "Combined transition plus pilot"
-            pilot_applies = _to_bool(enterprise.get("pilot_cohort_flag")) and assumptions.pilot_uptake_share > 0
-            if pilot_applies:
-                tax_due, deduction_data, carryforward = _apply_cost_based_deductions(
-                    benchmark_income, benchmark_tax, capex, rd, training, carryforward, assumptions, year
-                )
-                deduction_generated = deduction_data["deduction_generated_pkr_m"] * assumptions.pilot_uptake_share
-                deduction_used = deduction_data["deduction_used_pkr_m"] * assumptions.pilot_uptake_share
-                carryforward_used = deduction_data["carryforward_used_pkr_m"] * assumptions.pilot_uptake_share
-                expired = deduction_data["deduction_expired_pkr_m"] * assumptions.pilot_uptake_share
-                closing_carryforward = deduction_data["closing_carryforward_pkr_m"] * assumptions.pilot_uptake_share
-                capex_incremental = deduction_data["capex_incremental_deduction_pkr_m"] * assumptions.pilot_uptake_share
-                rd_incremental = deduction_data["rd_incremental_deduction_pkr_m"] * assumptions.pilot_uptake_share
-                training_incremental = deduction_data["training_incremental_deduction_pkr_m"] * assumptions.pilot_uptake_share
-                ordinary_capex_offset = deduction_data["ordinary_capex_depreciation_offset_pkr_m"] * assumptions.pilot_uptake_share
-                direct_cit_expenditure = max(0.0, benchmark_tax - tax_due)
-                admin_cost = assumptions.admin_cost_per_enterprise_pkr_m
+                state = "Accelerated removal: non-compliant enterprise moved to ordinary CIT"
+                tax_due = benchmark_tax_liability
+                customs_expenditure = 0.0
             else:
-                tax_due = benchmark_tax
-                direct_cit_expenditure = 0.0
+                state = "No acceleration trigger: status-quo treatment retained"
+                if year <= assumptions.holiday_expiry_year:
+                    tax_due = benchmark_tax_liability * (1 - assumptions.current_holiday_exemption_share)
+                customs_expenditure = _annualized_customs(customs_cumulative, year, assumptions)
+        elif scenario_id == "cost_based_regime":
+            state = "Ordinary CIT plus temporary cost-based deductions"
+            if support_can_claim:
+                tax_due, deduction_data, carryforward = _apply_cost_based_deductions(
+                    assessed_income, capex, rd, training, carryforward, assumptions, year
+                )
+                admin_cost, review_hours, fte_requirement = _administrative_cost(deduction_data, assumptions, enterprise)
+            else:
+                state = "Ordinary CIT: support-review gates not cleared"
 
         tax_due = max(0.0, tax_due)
-        indirect_cost = indirect_base / len(YEARS)
-        gross_fiscal_cost = direct_cit_expenditure + customs_expenditure + admin_cost + indirect_cost
-        net_fiscal_position = tax_due - gross_fiscal_cost
-        after_tax_income = benchmark_income - tax_due
-        weight = _num(enterprise, "aggregation_weight", 1.0)
+        tax_expenditure = max(0.0, benchmark_tax_liability - tax_due)
+        other_cash_cost = indirect_base / len(YEARS)
+        gross_fiscal_cost = tax_expenditure + customs_expenditure + admin_cost + other_cash_cost
+        cash_net_revenue = tax_due - admin_cost - other_cash_cost
+        reference_cash_net_revenue = reference_tax_liability
+        fiscal_impact_vs_reference = cash_net_revenue - reference_cash_net_revenue
+        after_tax_income = assessed_income - tax_due
+        cost_per_incremental_income = safe_divide(gross_fiscal_cost, incremental_income)
 
         rows.append(
             {
@@ -322,40 +354,51 @@ def simulate_enterprise(
                 "cohort_scope": enterprise.get("cohort_scope"),
                 "maturity_category": enterprise.get("maturity_category"),
                 "aggregation_weight": weight,
+                "evidence_model_ready": bool(enterprise.get("evidence_model_ready", enterprise.get("model_ready", False))),
+                "support_eligibility_status": enterprise.get("support_eligibility_status", "not assessed"),
+                "transition_treatment_status": enterprise.get("transition_treatment_status", "not assessed"),
                 "scenario_id": scenario_id,
                 "scenario": SCENARIOS[scenario_id],
                 "enterprise_tax_state": state,
                 "additionality_case": additionality_case,
                 "fiscal_year": year,
-                "assessed_income_before_relief_pkr_m": round(benchmark_income, 4),
-                "additionality_share": additionality_share,
+                "reference_assessed_income_pkr_m": round(reference_income, 4),
+                "assessed_income_before_relief_pkr_m": round(assessed_income, 4),
+                "additionality_share": round(scenario_additionality, 6),
                 "incremental_assessed_income_pkr_m": round(incremental_income, 4),
-                "benchmark_tax_no_sez_pkr_m": round(benchmark_tax, 4),
+                "benchmark_tax_liability_pkr_m": round(benchmark_tax_liability, 4),
+                "ordinary_reference_tax_pkr_m": round(reference_tax_liability, 4),
+                "benchmark_tax_no_sez_pkr_m": round(benchmark_tax_liability, 4),
                 "tax_due_pkr_m": round(tax_due, 4),
                 "tax_collected_pkr_m": round(tax_due, 4),
-                "effective_tax_rate": round(safe_divide(tax_due, benchmark_income) or 0.0, 6),
+                "effective_tax_rate": round(safe_divide(tax_due, assessed_income) or 0.0, 6),
                 "eligible_capex_pkr_m": round(capex, 4),
                 "eligible_rd_pkr_m": round(rd, 4),
                 "eligible_training_pkr_m": round(training, 4),
-                "capex_incremental_deduction_pkr_m": round(capex_incremental, 4),
-                "ordinary_capex_depreciation_offset_pkr_m": round(ordinary_capex_offset, 4),
-                "rd_incremental_deduction_pkr_m": round(rd_incremental, 4),
-                "training_incremental_deduction_pkr_m": round(training_incremental, 4),
-                "deduction_generated_pkr_m": round(deduction_generated, 4),
-                "deduction_used_pkr_m": round(deduction_used, 4),
-                "carryforward_used_pkr_m": round(carryforward_used, 4),
-                "deduction_expired_pkr_m": round(expired, 4),
-                "closing_carryforward_pkr_m": round(closing_carryforward, 4),
-                "direct_cit_expenditure_pkr_m": round(direct_cit_expenditure, 4),
+                "total_qualifying_expenditure_pkr_m": round(capex + rd + training, 4),
+                "qualifying_expenditure_threshold_pkr_m": round(assumptions.qualifying_expenditure_threshold_pkr_m, 4),
+                **{key: round(value, 4) if isinstance(value, (float, int)) else value for key, value in deduction_data.items()},
+                "tax_expenditure_pkr_m": round(tax_expenditure, 4),
+                "direct_cit_expenditure_pkr_m": round(tax_expenditure, 4),
                 "customs_expenditure_pkr_m": round(customs_expenditure, 4),
                 "incremental_admin_cost_pkr_m": round(admin_cost, 4),
-                "indirect_cost_allocated_pkr_m": round(indirect_cost, 4),
+                "admin_review_hours": round(review_hours, 4),
+                "admin_fte_requirement": round(fte_requirement, 6),
+                "other_government_cash_cost_pkr_m": round(other_cash_cost, 4),
+                "indirect_cost_allocated_pkr_m": round(other_cash_cost, 4),
                 "gross_fiscal_cost_pkr_m": round(gross_fiscal_cost, 4),
-                "net_fiscal_position_pkr_m": round(net_fiscal_position, 4),
+                "cash_net_revenue_pkr_m": round(cash_net_revenue, 4),
+                "reference_cash_net_revenue_pkr_m": round(reference_cash_net_revenue, 4),
+                "fiscal_impact_vs_reference_pkr_m": round(fiscal_impact_vs_reference, 4),
+                "net_fiscal_position_pkr_m": round(cash_net_revenue, 4),
                 "after_tax_income_pkr_m": round(after_tax_income, 4),
+                "fiscal_cost_per_incremental_income": round(cost_per_incremental_income, 6) if cost_per_incremental_income is not None else pd.NA,
                 "discount_factor": round(discount_factor, 8),
                 "npv_gross_fiscal_cost_pkr_m": round(gross_fiscal_cost * discount_factor, 4),
-                "npv_net_fiscal_position_pkr_m": round(net_fiscal_position * discount_factor, 4),
+                "npv_tax_expenditure_pkr_m": round(tax_expenditure * discount_factor, 4),
+                "npv_cash_net_revenue_pkr_m": round(cash_net_revenue * discount_factor, 4),
+                "npv_fiscal_impact_vs_reference_pkr_m": round(fiscal_impact_vs_reference * discount_factor, 4),
+                "npv_incremental_assessed_income_pkr_m": round(incremental_income * discount_factor, 4),
                 "weighted_gross_fiscal_cost_pkr_m": round(gross_fiscal_cost * weight, 4),
                 "weighted_tax_collected_pkr_m": round(tax_due * weight, 4),
                 "weighted_after_tax_income_pkr_m": round(after_tax_income * weight, 4),
@@ -366,40 +409,129 @@ def simulate_enterprise(
     return rows
 
 
+def _simulate_combined_enterprise(
+    enterprise: pd.Series | dict[str, Any],
+    assumptions: CalibrationAssumptions,
+    additionality_case: str,
+) -> list[dict[str, Any]]:
+    non_pilot_scenario = "accelerated_removal" if _is_non_compliant(enterprise) else "status_quo_to_2035"
+    non_pilot = simulate_enterprise(enterprise, assumptions, non_pilot_scenario, additionality_case)
+    if not (_to_bool(enterprise.get("pilot_cohort_flag")) and _support_can_claim(enterprise)):
+        return [_combined_row(row, row, 0.0, non_pilot_scenario) for row in non_pilot]
+    pilot = simulate_enterprise(enterprise, assumptions, "cost_based_regime", additionality_case)
+    uptake = min(max(float(assumptions.pilot_uptake_share), 0.0), 1.0)
+    return [_combined_row(base, pilot_row, uptake, non_pilot_scenario) for base, pilot_row in zip(non_pilot, pilot)]
+
+
+def _combined_row(base: dict[str, Any], pilot: dict[str, Any], uptake: float, non_pilot_scenario: str) -> dict[str, Any]:
+    out = dict(base)
+    numeric_blend = {
+        "reference_assessed_income_pkr_m",
+        "assessed_income_before_relief_pkr_m",
+        "additionality_share",
+        "incremental_assessed_income_pkr_m",
+        "benchmark_tax_liability_pkr_m",
+        "ordinary_reference_tax_pkr_m",
+        "benchmark_tax_no_sez_pkr_m",
+        "tax_due_pkr_m",
+        "tax_collected_pkr_m",
+        "eligible_capex_pkr_m",
+        "eligible_rd_pkr_m",
+        "eligible_training_pkr_m",
+        "total_qualifying_expenditure_pkr_m",
+        "capex_incremental_deduction_pkr_m",
+        "ordinary_capex_depreciation_offset_pkr_m",
+        "rd_incremental_deduction_pkr_m",
+        "training_incremental_deduction_pkr_m",
+        "deduction_generated_pkr_m",
+        "deduction_used_pkr_m",
+        "carryforward_used_pkr_m",
+        "deduction_expired_pkr_m",
+        "closing_carryforward_pkr_m",
+        "tax_expenditure_pkr_m",
+        "direct_cit_expenditure_pkr_m",
+        "customs_expenditure_pkr_m",
+        "incremental_admin_cost_pkr_m",
+        "admin_review_hours",
+        "admin_fte_requirement",
+        "other_government_cash_cost_pkr_m",
+        "indirect_cost_allocated_pkr_m",
+        "gross_fiscal_cost_pkr_m",
+        "cash_net_revenue_pkr_m",
+        "reference_cash_net_revenue_pkr_m",
+        "fiscal_impact_vs_reference_pkr_m",
+        "net_fiscal_position_pkr_m",
+        "after_tax_income_pkr_m",
+        "npv_gross_fiscal_cost_pkr_m",
+        "npv_tax_expenditure_pkr_m",
+        "npv_cash_net_revenue_pkr_m",
+        "npv_fiscal_impact_vs_reference_pkr_m",
+        "npv_incremental_assessed_income_pkr_m",
+        "weighted_gross_fiscal_cost_pkr_m",
+        "weighted_tax_collected_pkr_m",
+        "weighted_after_tax_income_pkr_m",
+    }
+    for key in numeric_blend:
+        out[key] = round(_num(base, key) * (1 - uptake) + _num(pilot, key) * uptake, 4)
+    out["effective_tax_rate"] = round(safe_divide(out["tax_due_pkr_m"], out["assessed_income_before_relief_pkr_m"]) or 0.0, 6)
+    out["fiscal_cost_per_incremental_income"] = (
+        round(safe_divide(out["gross_fiscal_cost_pkr_m"], out["incremental_assessed_income_pkr_m"]) or 0.0, 6)
+        if out["incremental_assessed_income_pkr_m"]
+        else pd.NA
+    )
+    out["scenario_id"] = "combined_transition_pilot"
+    out["scenario"] = SCENARIOS["combined_transition_pilot"]
+    out["enterprise_tax_state"] = f"Blended pilot uptake {uptake:.0%}; non-pilot path: {non_pilot_scenario}"
+    out["pilot_uptake_share"] = uptake
+    out["binding_constraint"] = pilot.get("binding_constraint", base.get("binding_constraint", "not_applicable")) if uptake else base.get("binding_constraint", "not_applicable")
+    return out
+
+
 def _apply_cost_based_deductions(
     benchmark_income: float,
-    benchmark_tax: float,
     capex: float,
     rd: float,
     training: float,
     carryforward: list[dict[str, float | int]],
     assumptions: CalibrationAssumptions,
     year: int,
-) -> tuple[float, dict[str, float], list[dict[str, float | int]]]:
+) -> tuple[float, dict[str, Any], list[dict[str, float | int]]]:
     carryforward, expired = _expire_carryforward(carryforward, year)
     ordinary_offset = capex / max(assumptions.ordinary_capex_depreciation_years, 1)
-    capex_incremental = max(0.0, capex * assumptions.capex_deduction_rate - ordinary_offset)
-    rd_incremental = max(0.0, rd * (assumptions.rd_super_deduction_total_rate - 1.0))
-    training_incremental = max(0.0, training * (assumptions.training_super_deduction_total_rate - 1.0))
+    threshold = max(0.0, assumptions.qualifying_expenditure_threshold_pkr_m)
+    total_qualifying = capex + rd + training
+    threshold_met = total_qualifying >= threshold
+    capex_incremental = rd_incremental = training_incremental = 0.0
+    if threshold_met:
+        package = clean_text(assumptions.instrument_package).lower() or "full"
+        if package in {"full", "capex_only"}:
+            capex_incremental = max(0.0, capex * assumptions.capex_deduction_rate - ordinary_offset)
+        if package in {"full", "rd_training"}:
+            rd_incremental = max(0.0, rd * (assumptions.rd_super_deduction_total_rate - 1.0))
+            training_incremental = max(0.0, training * (assumptions.training_super_deduction_total_rate - 1.0))
     generated_before_utilization = capex_incremental + rd_incremental + training_incremental
-    generated = min(generated_before_utilization * assumptions.utilization_rate, assumptions.annual_deduction_cap_pkr_m)
+    generated_after_utilization = generated_before_utilization * assumptions.utilization_rate
+    generated = min(generated_after_utilization, assumptions.annual_deduction_cap_pkr_m)
     current_entry = {"amount": generated, "expiry_year": year + assumptions.carry_forward_years, "origin_year": year}
     available_entries = carryforward + ([current_entry] if generated > 0 else [])
     used, carryforward_used, updated_entries = _use_carryforward_fifo(available_entries, benchmark_income, year)
     taxable_income_after_deduction = max(0.0, benchmark_income - used)
-    phase_rate = assumptions.statutory_cit_rate * _cit_phase_in_factor(year, assumptions)
-    tax_due = max(0.0, taxable_income_after_deduction * phase_rate)
+    tax_due = max(0.0, taxable_income_after_deduction * assumptions.statutory_cit_rate)
     closing = sum(float(entry["amount"]) for entry in updated_entries)
+    binding = _deduction_binding_constraint(threshold_met, generated_before_utilization, generated_after_utilization, generated, used, closing, assumptions)
     return tax_due, {
         "capex_incremental_deduction_pkr_m": capex_incremental,
         "ordinary_capex_depreciation_offset_pkr_m": ordinary_offset,
         "rd_incremental_deduction_pkr_m": rd_incremental,
         "training_incremental_deduction_pkr_m": training_incremental,
+        "deduction_generated_before_utilization_pkr_m": generated_before_utilization,
         "deduction_generated_pkr_m": generated,
         "deduction_used_pkr_m": used,
         "carryforward_used_pkr_m": carryforward_used,
         "deduction_expired_pkr_m": expired,
         "closing_carryforward_pkr_m": closing,
+        "threshold_met": bool(threshold_met),
+        "binding_constraint": binding,
     }, updated_entries
 
 
@@ -407,8 +539,19 @@ def build_zone_aggregation(annual: pd.DataFrame) -> pd.DataFrame:
     if annual.empty:
         return pd.DataFrame()
     df = annual.copy()
-    for col in ["gross_fiscal_cost_pkr_m", "tax_collected_pkr_m", "after_tax_income_pkr_m", "npv_gross_fiscal_cost_pkr_m", "npv_net_fiscal_position_pkr_m"]:
-        df[f"weighted_{col}"] = df[col] * df["aggregation_weight"]
+    for col in [
+        "gross_fiscal_cost_pkr_m",
+        "tax_collected_pkr_m",
+        "cash_net_revenue_pkr_m",
+        "fiscal_impact_vs_reference_pkr_m",
+        "after_tax_income_pkr_m",
+        "incremental_assessed_income_pkr_m",
+        "npv_gross_fiscal_cost_pkr_m",
+        "npv_cash_net_revenue_pkr_m",
+        "npv_fiscal_impact_vs_reference_pkr_m",
+    ]:
+        if col in df.columns:
+            df[f"weighted_{col}"] = df[col] * df["aggregation_weight"]
     group_cols = ["zone_id", "zone_name", "scenario_id", "scenario", "additionality_case", "fiscal_year"]
     value_cols = [c for c in df.columns if c.startswith("weighted_")]
     out = df.groupby(group_cols, as_index=False)[value_cols].sum()
@@ -422,11 +565,18 @@ def build_portfolio_summary(annual: pd.DataFrame, assumptions: CalibrationAssump
     df = annual.copy()
     group_cols = ["scenario_id", "scenario", "additionality_case"]
     rows = []
+    envelope = _fiscal_envelope(df, assumptions)
     for keys, group in df.groupby(group_cols):
         scenario_id, scenario, additionality_case = keys
-        weighted_cost_npv = (group["gross_fiscal_cost_pkr_m"] * group["aggregation_weight"] * group["discount_factor"]).sum()
-        weighted_tax_npv = (group["tax_collected_pkr_m"] * group["aggregation_weight"] * group["discount_factor"]).sum()
-        weighted_after_tax_npv = (group["after_tax_income_pkr_m"] * group["aggregation_weight"] * group["discount_factor"]).sum()
+        weighted_cost_npv = _weighted_npv(group, "gross_fiscal_cost_pkr_m")
+        weighted_tax_npv = _weighted_npv(group, "tax_collected_pkr_m")
+        weighted_tax_expenditure_npv = _weighted_npv(group, "tax_expenditure_pkr_m")
+        weighted_cash_net_npv = _weighted_npv(group, "cash_net_revenue_pkr_m")
+        weighted_impact_npv = _weighted_npv(group, "fiscal_impact_vs_reference_pkr_m")
+        weighted_after_tax_npv = _weighted_npv(group, "after_tax_income_pkr_m")
+        weighted_incremental_income_npv = _weighted_npv(group, "incremental_assessed_income_pkr_m")
+        weighted_admin_cost_npv = _weighted_npv(group, "incremental_admin_cost_pkr_m")
+        review_hours = (group["admin_review_hours"] * group["aggregation_weight"]).sum() if "admin_review_hours" in group else 0.0
         rows.append(
             {
                 "scenario_id": scenario_id,
@@ -434,10 +584,22 @@ def build_portfolio_summary(annual: pd.DataFrame, assumptions: CalibrationAssump
                 "additionality_case": additionality_case,
                 "npv_gross_fiscal_cost_pkr_m": round(weighted_cost_npv, 4),
                 "npv_tax_collected_pkr_m": round(weighted_tax_npv, 4),
+                "npv_tax_expenditure_pkr_m": round(weighted_tax_expenditure_npv, 4),
+                "npv_cash_net_revenue_pkr_m": round(weighted_cash_net_npv, 4),
+                "npv_fiscal_impact_vs_reference_pkr_m": round(weighted_impact_npv, 4),
                 "npv_enterprise_after_tax_income_pkr_m": round(weighted_after_tax_npv, 4),
-                "npv_net_fiscal_position_pkr_m": round(weighted_tax_npv - weighted_cost_npv, 4),
-                "fiscal_envelope_type": "synthetic_proxy_status_quo" if assumptions.d5_fiscal_envelope_pkr_m is None else "D5_envelope_user_supplied",
-                "fiscal_envelope_pkr_m": round(_fiscal_envelope(df, assumptions), 4),
+                "npv_incremental_assessed_income_pkr_m": round(weighted_incremental_income_npv, 4),
+                "npv_admin_cost_pkr_m": round(weighted_admin_cost_npv, 4),
+                "review_workload_hours": round(review_hours, 4),
+                "indicative_fte_requirement": round(review_hours / assumptions.annual_fte_hours, 6),
+                "fiscal_cost_per_incremental_income": (
+                    round(weighted_cost_npv / weighted_incremental_income_npv, 6) if weighted_incremental_income_npv else "Not estimable"
+                ),
+                "fiscal_envelope_type": _fiscal_envelope_type(assumptions),
+                "fiscal_envelope_definition": assumptions.fiscal_envelope_definition,
+                "fiscal_envelope_pkr_m": round(envelope, 4),
+                "envelope_margin_pkr_m": round(envelope - weighted_cost_npv, 4),
+                "within_envelope": bool(weighted_cost_npv <= envelope),
                 "model_version": MODEL_VERSION,
             }
         )
@@ -447,67 +609,112 @@ def build_portfolio_summary(annual: pd.DataFrame, assumptions: CalibrationAssump
 def build_sensitivity(enterprises: pd.DataFrame, assumptions: CalibrationAssumptions) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for case in ADDITIONALITY_CASES:
-        annual = pd.DataFrame(
-            row
-            for _, enterprise in enterprises.iterrows()
-            for row in simulate_enterprise(enterprise, assumptions, "cost_based_regime", case)
-        )
-        summary = build_portfolio_summary(annual, assumptions)
-        row = summary.iloc[0].to_dict()
-        row["sensitivity_axis"] = "additionality"
-        row["sensitivity_value"] = case
-        rows.append(row)
-    for rate in [max(0, assumptions.capex_deduction_rate - 0.25), assumptions.capex_deduction_rate, assumptions.capex_deduction_rate + 0.25]:
-        variant = replace(assumptions, capex_deduction_rate=rate)
-        annual = pd.DataFrame(
-            row
-            for _, enterprise in enterprises.iterrows()
-            for row in simulate_enterprise(enterprise, variant, "cost_based_regime", "base")
-        )
-        row = build_portfolio_summary(annual, variant).iloc[0].to_dict()
-        row["sensitivity_axis"] = "capex_rate"
-        row["sensitivity_value"] = rate
-        rows.append(row)
-    for cap in [assumptions.annual_deduction_cap_pkr_m * 0.5, assumptions.annual_deduction_cap_pkr_m, assumptions.annual_deduction_cap_pkr_m * 1.5]:
-        variant = replace(assumptions, annual_deduction_cap_pkr_m=cap)
-        annual = pd.DataFrame(
-            row
-            for _, enterprise in enterprises.iterrows()
-            for row in simulate_enterprise(enterprise, variant, "cost_based_regime", "base")
-        )
-        row = build_portfolio_summary(annual, variant).iloc[0].to_dict()
-        row["sensitivity_axis"] = "annual_cap"
-        row["sensitivity_value"] = cap
-        rows.append(row)
+        rows.append(_sensitivity_row(enterprises, assumptions, "additionality", case, additionality_case=case))
+    for rate in [0.0, 0.5, assumptions.capex_deduction_rate, 1.0, 1.25]:
+        rows.append(_sensitivity_row(enterprises, replace(assumptions, capex_deduction_rate=rate), "capex_rate", rate))
+    for cap in [1_500.0, assumptions.annual_deduction_cap_pkr_m, 10_000.0]:
+        rows.append(_sensitivity_row(enterprises, replace(assumptions, annual_deduction_cap_pkr_m=cap), "annual_cap", cap))
+    for threshold in [0.0, assumptions.qualifying_expenditure_threshold_pkr_m, 6_000.0]:
+        rows.append(_sensitivity_row(enterprises, replace(assumptions, qualifying_expenditure_threshold_pkr_m=threshold), "qualifying_threshold", threshold))
+    for package in ["capex_only", "rd_training", "full"]:
+        rows.append(_sensitivity_row(enterprises, replace(assumptions, instrument_package=package), "instrument_package", package))
+    for utilization in [0.5, assumptions.utilization_rate, 1.0]:
+        rows.append(_sensitivity_row(enterprises, replace(assumptions, utilization_rate=utilization), "utilization", utilization))
     return pd.DataFrame(rows)
+
+
+def _sensitivity_row(
+    enterprises: pd.DataFrame,
+    assumptions: CalibrationAssumptions,
+    axis: str,
+    value: object,
+    *,
+    scenario_id: str = "cost_based_regime",
+    additionality_case: str = "base",
+) -> dict[str, Any]:
+    annual = pd.DataFrame(
+        row
+        for _, enterprise in enterprises.iterrows()
+        for row in simulate_enterprise(enterprise, assumptions, scenario_id, additionality_case)
+    )
+    row = build_portfolio_summary(annual, assumptions).iloc[0].to_dict()
+    row["sensitivity_axis"] = axis
+    row["sensitivity_value"] = value
+    row["fiscal_envelope_pkr_m"] = _fiscal_envelope(annual, assumptions)
+    row["fiscal_envelope_definition"] = assumptions.fiscal_envelope_definition
+    return row
 
 
 def build_parameter_ranges(enterprises: pd.DataFrame, assumptions: CalibrationAssumptions) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
-    envelope = _status_quo_proxy_envelope(enterprises, assumptions)
+    envelope = _fiscal_envelope(pd.DataFrame(), assumptions)
+    packages = ["capex_only", "rd_training", "full"]
+    rates = [0.0, 0.75, 1.25]
+    caps = [3_000.0, 18_000.0, 25_000.0]
+    thresholds = [0.0, 3_000.0]
+    utilizations = [0.8]
+    uptakes = [0.0, 0.6, 1.0]
     for case in ADDITIONALITY_CASES:
-        capex = solve_revenue_neutral_parameter(enterprises, assumptions, "capex_deduction_rate", 0.0, 2.0, envelope, case)
-        cap = solve_revenue_neutral_parameter(enterprises, assumptions, "annual_deduction_cap_pkr_m", 0.0, 1000.0, envelope, case)
-        rows.append(
-            {
-                "additionality_case": case,
-                "capex_rate_status": capex["status"],
-                "max_revenue_neutral_capex_rate": capex["value"],
-                "annual_cap_status": cap["status"],
-                "max_revenue_neutral_annual_cap_pkr_m": cap["value"],
-                "rd_total_deduction_rate": assumptions.rd_super_deduction_total_rate,
-                "rd_incremental_deduction_rate": max(0.0, assumptions.rd_super_deduction_total_rate - 1.0),
-                "training_total_deduction_rate": assumptions.training_super_deduction_total_rate,
-                "training_incremental_deduction_rate": max(0.0, assumptions.training_super_deduction_total_rate - 1.0),
-                "qualifying_monetary_threshold_pkr_m": 0.0,
-                "carry_forward_years": assumptions.carry_forward_years,
-                "duration_sunset": "Temporary only; no SEZ-specific incentive after 30 June 2035.",
-                "fiscal_envelope_pkr_m": round(envelope, 4),
-                "envelope_type": "synthetic_proxy_status_quo",
-                "model_version": MODEL_VERSION,
-            }
-        )
-    return pd.DataFrame(rows)
+        for package in packages:
+            for rate in rates:
+                for cap in caps:
+                    for threshold in thresholds:
+                        for utilization in utilizations:
+                            for uptake in uptakes:
+                                variant = replace(
+                                    assumptions,
+                                    instrument_package=package,
+                                    capex_deduction_rate=rate,
+                                    annual_deduction_cap_pkr_m=cap,
+                                    qualifying_expenditure_threshold_pkr_m=threshold,
+                                    utilization_rate=utilization,
+                                    pilot_uptake_share=uptake,
+                                )
+                                support_pool = enterprises[enterprises.apply(_support_can_claim, axis=1)].copy()
+                                model_pool = support_pool if not support_pool.empty else enterprises
+                                annual = pd.DataFrame(
+                                    row
+                                    for _, enterprise in model_pool.iterrows()
+                                    for row in simulate_enterprise(enterprise, variant, "cost_based_regime", case)
+                                )
+                                summary = build_portfolio_summary(annual, variant)
+                                portfolio = summary[summary["scenario_id"].eq("cost_based_regime")].iloc[0]
+                                full_pilot_cost = float(portfolio["npv_gross_fiscal_cost_pkr_m"])
+                                tested_cost = full_pilot_cost * uptake
+                                feasible = tested_cost <= envelope
+                                incremental = portfolio["npv_incremental_assessed_income_pkr_m"]
+                                admin_cost = portfolio["npv_admin_cost_pkr_m"]
+                                binding = _frontier_binding_constraint(annual, feasible, tested_cost, envelope)
+                                rows.append(
+                                    {
+                                        "additionality_case": case,
+                                        "instrument_package": package,
+                                        "instrument_package_label": INSTRUMENT_PACKAGES[package],
+                                        "capex_deduction_rate": rate,
+                                        "annual_cap_pkr_m": cap,
+                                        "qualifying_threshold_pkr_m": threshold,
+                                        "utilization_rate": utilization,
+                                        "pilot_uptake_share": uptake,
+                                        "npv_full_pilot_gross_fiscal_cost_pkr_m": round(full_pilot_cost, 4),
+                                        "npv_tested_fiscal_cost_pkr_m": round(tested_cost, 4),
+                                        "npv_gross_fiscal_cost_pkr_m": round(tested_cost, 4),
+                                        "fiscal_envelope_pkr_m": round(envelope, 4),
+                                        "fiscal_envelope_definition": assumptions.fiscal_envelope_definition,
+                                        "envelope_margin_pkr_m": round(envelope - tested_cost, 4),
+                                        "feasible_flag": bool(feasible),
+                                        "solver_status": "within_illustrative_D5_envelope" if feasible else "outside_illustrative_D5_envelope",
+                                        "binding_constraint": binding,
+                                        "npv_incremental_assessed_income_pkr_m": incremental,
+                                        "npv_admin_cost_pkr_m": admin_cost,
+                                        "review_workload_hours": portfolio["review_workload_hours"],
+                                        "fiscal_cost_per_incremental_income": portfolio["fiscal_cost_per_incremental_income"],
+                                        "duration_sunset": "Temporary only; no SEZ-specific incentive after 30 June 2035.",
+                                        "model_version": MODEL_VERSION,
+                                    }
+                                )
+    frontier = pd.DataFrame(rows)
+    frontier["frontier_interpretation"] = _frontier_interpretation(frontier)
+    return frontier
 
 
 def solve_revenue_neutral_parameter(
@@ -521,6 +728,8 @@ def solve_revenue_neutral_parameter(
     tolerance: float = 1e-3,
     max_iter: int = 40,
 ) -> dict[str, Any]:
+    """Compatibility wrapper: tests a single parameter against an explicit fiscal envelope."""
+
     def cost_at(value: float) -> float:
         variant = replace(assumptions, **{parameter: value})
         annual = pd.DataFrame(
@@ -535,9 +744,9 @@ def solve_revenue_neutral_parameter(
     low_cost = cost_at(lower)
     high_cost = cost_at(upper)
     if low_cost > envelope + tolerance:
-        return {"status": "no_feasible_solution", "value": None, "cost_at_value": low_cost}
+        return {"status": "no_feasible_setting_within_tested_range", "value": None, "cost_at_value": round(low_cost, 4)}
     if high_cost <= envelope + tolerance:
-        return {"status": "entire_search_range_within_envelope", "value": upper, "cost_at_value": high_cost}
+        return {"status": "no_binding_upper_bound_identified_within_tested_range", "value": None, "cost_at_value": round(high_cost, 4)}
     lo, hi = lower, upper
     best = lower
     best_cost = low_cost
@@ -549,10 +758,7 @@ def solve_revenue_neutral_parameter(
             lo = mid
         else:
             hi = mid
-    status = "feasible_interior_solution"
-    if abs(best - lower) < tolerance or abs(best - upper) < tolerance:
-        status = "feasible_only_at_boundary"
-    return {"status": status, "value": round(best, 6), "cost_at_value": round(best_cost, 4)}
+    return {"status": "feasible_interior_frontier", "value": round(best, 6), "cost_at_value": round(best_cost, 4)}
 
 
 def build_reconciliation(enterprises: pd.DataFrame, zones: pd.DataFrame, assumptions: CalibrationAssumptions) -> pd.DataFrame:
@@ -595,47 +801,99 @@ def build_reconciliation(enterprises: pd.DataFrame, zones: pd.DataFrame, assumpt
 def build_scenario_definitions(assumptions: CalibrationAssumptions) -> pd.DataFrame:
     return pd.DataFrame(
         [
-            {"scenario_id": key, "scenario": value, "role": _scenario_role(key), "d5_envelope_test": key in {"cost_based_regime", "combined_transition_pilot"}, "model_version": MODEL_VERSION}
+            {
+                "scenario_id": key,
+                "scenario": value,
+                "role": _scenario_role(key),
+                "additionality_treatment": _scenario_additionality_text(key),
+                "ordinary_cit_transition": _scenario_cit_transition_text(key),
+                "d5_envelope_test": key in {"cost_based_regime", "combined_transition_pilot"},
+                "fiscal_envelope_definition": assumptions.fiscal_envelope_definition,
+                "model_version": MODEL_VERSION,
+            }
             for key, value in SCENARIOS.items()
         ]
     )
 
 
 def build_d7_handoff(parameter_ranges: pd.DataFrame, verification: pd.DataFrame, assumptions: CalibrationAssumptions) -> pd.DataFrame:
-    burden = verification.groupby("instrument", as_index=False)["burden_score"].mean()
-    burden["administrative_feasibility_burden"] = burden["burden_score"].apply(_burden_label)
-    rows = []
-    for instrument in ["CAPEX", "R&D", "Training"]:
-        reqs = verification[verification["instrument"].eq(instrument)]["requirement"].tolist()
-        b = burden[burden["instrument"].eq(instrument)]
-        rows.append(
+    evidence = "; ".join(verification["requirement"].dropna().astype(str).unique().tolist()) if not verification.empty else "Verification evidence not loaded"
+    return pd.DataFrame(
+        [
             {
-                "handoff_item": instrument,
-                "parameter_range_to_test": _instrument_parameter_text(instrument, parameter_ranges),
-                "cohort_eligibility_policy": assumptions.cohort_eligibility_policy,
-                "claim_verification_evidence": "; ".join(reqs),
-                "quarterly_kpi_fields": "claims filed; verified expenditure; uptake; processing time; disallowance reason; enterprise status",
-                "semi_annual_evaluation_fields": "fiscal impact; additionality evidence; administrative feasibility; investor response; compliance findings",
-                "launch_dependencies": "C2 legal authority; D4 legal review; D5/FBR fiscal verification; D6 calibration; Task Force/Finance decision",
-                "pilot_timeline": "Design by 30 Oct 2026; launch June 2027; monitoring Sep 2027-Jun 2029; evaluation Jul-Aug 2029.",
-                "pilot_selection_status": "No pilot zone selected by this model.",
-                "administrative_feasibility_burden": b["administrative_feasibility_burden"].iloc[0] if not b.empty else "Not assessed",
+                "trigger": "Fiscal cost exceeds approved envelope",
+                "metric": "NPV gross fiscal cost vs approved D5 envelope",
+                "threshold": "Above envelope in any semi-annual review",
+                "review_frequency": "Semi-annual",
+                "data_owner": "FBR / Finance Division",
+                "decision_owner": "Task Force / Finance Division",
+                "default_action": "Tighten or suspend",
+                "parameter_potentially_affected": "Rate, cap, uptake, threshold, eligible instruments",
+                "verification_evidence": evidence,
                 "model_version": MODEL_VERSION,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def _instrument_parameter_text(instrument: str, parameter_ranges: pd.DataFrame) -> str:
-    if parameter_ranges.empty:
-        return "Not calculated"
-    if instrument == "CAPEX":
-        return "CAPEX expensing/rate range by additionality case: " + "; ".join(
-            f"{row.additionality_case}: {row.max_revenue_neutral_capex_rate}" for row in parameter_ranges.itertuples()
-        )
-    if instrument == "R&D":
-        return "R&D total rate 150%; incremental SEZ-specific rate 50%; subject to D5/D6 validation."
-    return "Training total rate 150%; incremental SEZ-specific rate 50%; subject to D5/D6 validation."
+            },
+            {
+                "trigger": "Verified additionality falls below agreed assumption",
+                "metric": "Validated additionality vs D6 low/base/high assumption",
+                "threshold": "Below low-case assumption or comparator evidence negative",
+                "review_frequency": "Semi-annual",
+                "data_owner": "BOI / SEZA / FBR / REMIT",
+                "decision_owner": "Task Force / BOI",
+                "default_action": "Recalibrate",
+                "parameter_potentially_affected": "Instrument package, rate, eligibility, continuation",
+                "verification_evidence": "Comparator evidence; enterprise questionnaire; FBR/sector data",
+                "model_version": MODEL_VERSION,
+            },
+            {
+                "trigger": "Claim-disallowance rate exceeds threshold",
+                "metric": "Share of claimed deduction value disallowed after review",
+                "threshold": ">20% by value or repeated documentation failures",
+                "review_frequency": "Quarterly",
+                "data_owner": "FBR / enterprise auditors",
+                "decision_owner": "FBR / Finance Division",
+                "default_action": "Tighten",
+                "parameter_potentially_affected": "Verification rules, threshold, audit rate, carryforward",
+                "verification_evidence": evidence,
+                "model_version": MODEL_VERSION,
+            },
+            {
+                "trigger": "Administrative backlog exceeds capacity",
+                "metric": "Processing time, review hours, unresolved claims",
+                "threshold": ">60 days median processing or >1.0 FTE gap",
+                "review_frequency": "Quarterly",
+                "data_owner": "BOI / FBR / SEZA",
+                "decision_owner": "Task Force / BOI / FBR",
+                "default_action": "Suspend new claims or simplify",
+                "parameter_potentially_affected": "Eligible instruments, audit sample rate, threshold",
+                "verification_evidence": "Claim register; review-hour logs; audit queue",
+                "model_version": MODEL_VERSION,
+            },
+            {
+                "trigger": "Uptake materially outside expected range",
+                "metric": "Participating share vs expected pilot uptake",
+                "threshold": "<25% or >125% of expected uptake",
+                "review_frequency": "Quarterly",
+                "data_owner": "BOI / SEZA",
+                "decision_owner": "Task Force / BOI",
+                "default_action": "Recalibrate",
+                "parameter_potentially_affected": "Uptake assumption, cap, rate, outreach conditions",
+                "verification_evidence": "Registration and claim uptake data",
+                "model_version": MODEL_VERSION,
+            },
+            {
+                "trigger": "Compliance or verification failure occurs",
+                "metric": "Developer/enterprise compliance status and audit findings",
+                "threshold": "Material breach, unresolved legal dispute, or failed audit",
+                "review_frequency": "Continuous / quarterly",
+                "data_owner": "SEZA / BOI / FBR / legal team",
+                "decision_owner": "Task Force / legal authority / FBR",
+                "default_action": "Suspend or terminate",
+                "parameter_potentially_affected": "Eligibility, transition status, enforcement path",
+                "verification_evidence": "Legal review; compliance file; audit report",
+                "model_version": MODEL_VERSION,
+            },
+        ]
+    )
 
 
 def _blocked_frames(
@@ -646,7 +904,15 @@ def _blocked_frames(
     enterprises: pd.DataFrame | None = None,
     readiness: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:
-    status_df = pd.DataFrame([{"calibration_status": status, "blocked_reason": "Enterprise-level financial evidence is required before D6 calculations can run.", "model_version": MODEL_VERSION}])
+    status_df = pd.DataFrame(
+        [
+            {
+                "calibration_status": status,
+                "blocked_reason": "Enterprise-level financial evidence is required before D6 calculations can run.",
+                "model_version": MODEL_VERSION,
+            }
+        ]
+    )
     empty = pd.DataFrame()
     return {
         "calibration_enterprise_inputs": enterprises if enterprises is not None else empty,
@@ -668,12 +934,25 @@ def _blocked_frames(
 def _load_assumptions_frame(path: Path) -> pd.DataFrame:
     if path.exists():
         return pd.read_csv(path)
-    return pd.DataFrame([{"assumption_key": field, "value": getattr(CalibrationAssumptions(), field), "unit": "", "provenance": "code default", "editable": True, "description": ""} for field in CalibrationAssumptions.__dataclass_fields__])
+    return pd.DataFrame(
+        [
+            {
+                "assumption_key": field,
+                "value": getattr(CalibrationAssumptions(), field),
+                "unit": "",
+                "provenance": "code default",
+                "editable": True,
+                "description": "",
+            }
+            for field in CalibrationAssumptions.__dataclass_fields__
+        ]
+    )
 
 
 def _assumptions_from_frame(frame: pd.DataFrame) -> CalibrationAssumptions:
     values: dict[str, Any] = {}
     fields = CalibrationAssumptions.__dataclass_fields__
+    string_keys = {"cohort_eligibility_policy", "instrument_package", "fiscal_envelope_definition"}
     for _, row in frame.iterrows():
         key = str(row.get("assumption_key", "")).strip()
         if key not in fields:
@@ -681,10 +960,10 @@ def _assumptions_from_frame(frame: pd.DataFrame) -> CalibrationAssumptions:
         raw = row.get("value")
         if clean_text(raw) == "":
             values[key] = None
-        elif fields[key].type in {int, "int"} or key.endswith("_year") or key.endswith("_years"):
-            values[key] = int(float(raw))
-        elif key == "cohort_eligibility_policy":
+        elif key in string_keys:
             values[key] = clean_text(raw)
+        elif key.endswith("_year") or key.endswith("_years"):
+            values[key] = int(float(raw))
         else:
             values[key] = float(raw)
     return CalibrationAssumptions(**values)
@@ -715,8 +994,10 @@ def _assumptions_with_ui_overrides(
     numeric_keys = {
         "d6_capex_deduction_rate": "capex_deduction_rate",
         "d6_annual_deduction_cap_pkr_m": "annual_deduction_cap_pkr_m",
+        "d6_qualifying_threshold_pkr_m": "qualifying_expenditure_threshold_pkr_m",
         "d6_utilization_rate": "utilization_rate",
         "d6_discount_rate": "discount_rate",
+        "d6_pilot_uptake_share": "pilot_uptake_share",
     }
     for source_key, target_key in numeric_keys.items():
         if source_key not in scenario:
@@ -726,12 +1007,8 @@ def _assumptions_with_ui_overrides(
             updates[target_key] = parsed
 
     package = clean_text(scenario.get("d6_instrument_package")).lower()
-    if package == "capex_only":
-        updates["rd_super_deduction_total_rate"] = 1.0
-        updates["training_super_deduction_total_rate"] = 1.0
-    elif package == "rd_training":
-        updates["capex_deduction_rate"] = 0.0
-
+    if package in INSTRUMENT_PACKAGES:
+        updates["instrument_package"] = package
     return replace(assumptions, **updates) if updates else assumptions
 
 
@@ -768,65 +1045,261 @@ def _assumptions_frame_with_overrides(
     if scenario:
         out["active_ui_override"] = out["assumption_key"].astype(str).isin(
             {
+                "instrument_package",
                 "capex_deduction_rate",
                 "annual_deduction_cap_pkr_m",
+                "qualifying_expenditure_threshold_pkr_m",
                 "utilization_rate",
                 "discount_rate",
-                "rd_super_deduction_total_rate",
-                "training_super_deduction_total_rate",
+                "pilot_uptake_share",
             }
         )
     return out
 
 
+def _empty_deduction_data() -> dict[str, Any]:
+    return {
+        "capex_incremental_deduction_pkr_m": 0.0,
+        "ordinary_capex_depreciation_offset_pkr_m": 0.0,
+        "rd_incremental_deduction_pkr_m": 0.0,
+        "training_incremental_deduction_pkr_m": 0.0,
+        "deduction_generated_before_utilization_pkr_m": 0.0,
+        "deduction_generated_pkr_m": 0.0,
+        "deduction_used_pkr_m": 0.0,
+        "carryforward_used_pkr_m": 0.0,
+        "deduction_expired_pkr_m": 0.0,
+        "closing_carryforward_pkr_m": 0.0,
+        "threshold_met": False,
+        "binding_constraint": "not_applicable",
+    }
+
+
+def _support_eligibility_status(row: pd.Series) -> str:
+    if not bool(row.get("evidence_model_ready")):
+        return "not_model_ready_for_calculation"
+    if bool(row.get("epz_excluded")):
+        return "excluded_epz_track"
+    if not bool(row.get("legal_ready")):
+        return "not_support_ready_pending_D4_legal_review"
+    if not bool(row.get("fiscal_ready")):
+        return "not_support_ready_pending_D5_FBR_validation"
+    if not bool(row.get("compliance_ready")):
+        return "not_support_ready_compliance_or_cure_required"
+    additionality = clean_text(row.get("additionality_confidence")).lower()
+    if additionality in {"", "unknown", "low"}:
+        return "not_support_ready_additionality_not_established"
+    return "potential_cost_based_review_input_subject_to_validation"
+
+
+def _transition_treatment_status(row: pd.Series) -> str:
+    if not bool(row.get("evidence_model_ready")):
+        return "calculation_blocked"
+    if _is_non_compliant(row):
+        return "accelerated_removal_or_sanction_review"
+    if not bool(row.get("legal_ready")):
+        return "legal_transition_review"
+    if clean_text(row.get("activity_category")).lower() == "moving_toward_production":
+        return "construction_stage_transition_review"
+    if _support_can_claim(row):
+        return "cost_based_pilot_review_possible"
+    return "ordinary_or_non_fiscal_transition_review"
+
+
 def _blocked_reason(row: pd.Series) -> str:
     reasons = []
     if row.get("epz_excluded"):
-        reasons.append("EPZ cohort excluded from default SEZ calibration slice.")
-    if not row.get("legal_ready"):
-        reasons.append("D4 legal readiness not cleared.")
-    if not row.get("fiscal_ready"):
-        reasons.append("D5/FBR fiscal verification not cleared.")
-    if not row.get("compliance_ready"):
-        reasons.append("Developer/enterprise compliance not cleared.")
+        reasons.append("EPZ cohort excluded from default SEZ D6 calibration slice.")
+    if not row.get("financial_evidence_complete"):
+        reasons.append("Enterprise financial evidence incomplete for calculation.")
     if pd.isna(row.get("baseline_assessed_income_pkr_m")):
         reasons.append("Enterprise assessed-income basis missing.")
-    return " ".join(reasons) if reasons else "Gate-cleared for synthetic D6 modelling."
+    if reasons:
+        return " ".join(reasons)
+    if not row.get("support_eligibility_status", "").startswith("potential"):
+        return f"Synthetic model-ready, but support review is blocked: {row.get('support_eligibility_status')}."
+    return "Synthetic model-ready for D6 calculation; real-world use still requires D4/D5/human validation."
 
 
-def _scenario_role(scenario_id: str) -> str:
-    return {
-        "status_quo_to_2035": "2026-2035 baseline fiscal-cost envelope scenario.",
-        "accelerated_removal": "Transition scenario for non-compliant zones/enterprises.",
-        "cost_based_regime": "Candidate CAPEX/R&D/training cost-based scenario tested against the envelope.",
-        "combined_transition_pilot": "Combined accelerated-removal and pilot-uptake scenario.",
-        "no_sez_specific_incentive": "Counterfactual tax benchmark, not a transition scenario substitute.",
-    }[scenario_id]
+def _support_can_claim(row: pd.Series | dict[str, Any]) -> bool:
+    return clean_text(row.get("support_eligibility_status")).startswith("potential_cost_based_review_input")
+
+
+def _is_non_compliant(row: pd.Series | dict[str, Any]) -> bool:
+    values = [
+        clean_text(row.get("compliance_status")).lower(),
+        clean_text(row.get("developer_compliance_status")).lower(),
+        clean_text(row.get("enterprise_compliance_status")).lower(),
+    ]
+    return any(value == "non_compliant" for value in values)
+
+
+def _scenario_additionality_share(
+    enterprise: pd.Series | dict[str, Any],
+    assumptions: CalibrationAssumptions,
+    scenario_id: str,
+    additionality_case: str,
+) -> float:
+    if scenario_id == "no_sez_specific_incentive":
+        return 0.0
+    if scenario_id == "accelerated_removal" and _is_non_compliant(enterprise):
+        return 0.0
+    if scenario_id == "cost_based_regime" and not _support_can_claim(enterprise):
+        return 0.0
+    base = assumptions.additionality_share(additionality_case)
+    confidence_factor = {
+        "high": 1.0,
+        "medium": 0.75,
+        "low": 0.25,
+        "unknown": 0.35,
+        "": 0.35,
+    }.get(clean_text(enterprise.get("additionality_confidence")).lower(), 0.5)
+    if scenario_id in {"status_quo_to_2035", "accelerated_removal"}:
+        return base * assumptions.status_quo_additionality_factor * confidence_factor
+    return base * confidence_factor
+
+
+def _responsive_expenditure(
+    capex: float,
+    rd: float,
+    training: float,
+    scenario_id: str,
+    assumptions: CalibrationAssumptions,
+    support_can_claim: bool,
+) -> float:
+    if scenario_id == "no_sez_specific_incentive":
+        return 0.0
+    if scenario_id in {"status_quo_to_2035", "accelerated_removal"}:
+        return capex + rd + training
+    if scenario_id == "cost_based_regime" and not support_can_claim:
+        return 0.0
+    package = clean_text(assumptions.instrument_package).lower() or "full"
+    total = 0.0
+    if package in {"full", "capex_only"}:
+        total += capex
+    if package in {"full", "rd_training"}:
+        total += rd + training
+    return total
+
+
+def _administrative_cost(
+    deduction_data: dict[str, Any],
+    assumptions: CalibrationAssumptions,
+    enterprise: pd.Series | dict[str, Any],
+) -> tuple[float, float, float]:
+    has_claim = bool(deduction_data.get("deduction_generated_pkr_m", 0.0) or deduction_data.get("carryforward_used_pkr_m", 0.0))
+    if not has_claim:
+        return 0.0, 0.0, 0.0
+    burden_multiplier = {
+        "high": 1.25,
+        "medium": 1.0,
+        "low": 0.8,
+    }.get(clean_text(enterprise.get("data_confidence_band")).lower(), 1.0)
+    hours = (assumptions.admin_review_hours_per_claim + assumptions.admin_audit_hours_per_claim * assumptions.audit_sample_rate) * burden_multiplier
+    cost = assumptions.fixed_admin_cost_per_claim_pkr_m + hours * assumptions.admin_cost_per_review_hour_pkr_m
+    cost += assumptions.admin_cost_per_enterprise_pkr_m
+    return cost, hours, hours / assumptions.annual_fte_hours
+
+
+def _deduction_binding_constraint(
+    threshold_met: bool,
+    generated_before_utilization: float,
+    generated_after_utilization: float,
+    generated: float,
+    used: float,
+    closing: float,
+    assumptions: CalibrationAssumptions,
+) -> str:
+    if not threshold_met:
+        return "qualifying_threshold"
+    if generated_before_utilization <= 0:
+        return "no_eligible_incremental_deduction"
+    if generated < generated_after_utilization - 1e-6:
+        return "annual_cap"
+    if assumptions.utilization_rate < 0.999:
+        return "utilization_rate"
+    if closing > 1e-6 and used < generated:
+        return "taxable_income_capacity_or_carryforward"
+    return "not_binding_within_enterprise_year"
+
+
+def _frontier_binding_constraint(annual: pd.DataFrame, feasible: bool, cost: float, envelope: float) -> str:
+    if not feasible:
+        return "fiscal_envelope"
+    if abs(envelope - cost) <= max(50.0, envelope * 0.01):
+        return "fiscal_envelope_near_binding"
+    constraints = annual.get("binding_constraint", pd.Series(dtype=str)).astype(str)
+    if constraints.str.contains("annual_cap").any():
+        return "annual_cap"
+    if constraints.str.contains("qualifying_threshold").any():
+        return "qualifying_threshold"
+    if constraints.str.contains("utilization_rate").any():
+        return "utilization_rate"
+    return "no_binding_upper_bound_identified_within_tested_range"
+
+
+def _frontier_interpretation(frontier: pd.DataFrame) -> pd.Series:
+    if frontier.empty:
+        return pd.Series(dtype=str)
+    any_feasible = frontier["feasible_flag"].astype(bool).any()
+    any_infeasible = (~frontier["feasible_flag"].astype(bool)).any()
+    if any_feasible and any_infeasible:
+        text = "Feasible parameter frontier: the illustrative D5 fiscal envelope binds within the tested range."
+    elif any_feasible:
+        text = "No binding upper bound identified within the tested range."
+    else:
+        text = "No feasible setting within the tested range."
+    return pd.Series([text] * len(frontier), index=frontier.index)
+
+
+def _weighted_npv(group: pd.DataFrame, column: str) -> float:
+    if column not in group.columns:
+        return 0.0
+    return float((group[column] * group["aggregation_weight"] * group["discount_factor"]).sum())
 
 
 def _fiscal_envelope(annual: pd.DataFrame, assumptions: CalibrationAssumptions) -> float:
     if assumptions.d5_fiscal_envelope_pkr_m is not None:
-        return assumptions.d5_fiscal_envelope_pkr_m
+        return float(assumptions.d5_fiscal_envelope_pkr_m)
+    if annual.empty or "scenario_id" not in annual.columns:
+        return 0.0
     status = annual[(annual["scenario_id"] == "status_quo_to_2035") & (annual["additionality_case"] == "base")]
     if status.empty:
         return 0.0
-    return float((status["gross_fiscal_cost_pkr_m"] * status["aggregation_weight"] * status["discount_factor"]).sum())
+    return _weighted_npv(status, "gross_fiscal_cost_pkr_m")
 
 
-def _status_quo_proxy_envelope(enterprises: pd.DataFrame, assumptions: CalibrationAssumptions) -> float:
-    annual = pd.DataFrame(
-        row
-        for _, enterprise in enterprises.iterrows()
-        for row in simulate_enterprise(enterprise, assumptions, "status_quo_to_2035", "base")
-    )
-    return _fiscal_envelope(annual, assumptions)
+def _fiscal_envelope_type(assumptions: CalibrationAssumptions) -> str:
+    return "illustrative_D5_fiscal_envelope" if assumptions.d5_fiscal_envelope_pkr_m is not None else "synthetic_proxy_status_quo"
 
 
-def _cit_phase_in_factor(year: int, assumptions: CalibrationAssumptions) -> float:
-    if year > assumptions.projection_end_year:
-        return 1.0
-    years = assumptions.projection_end_year - assumptions.projection_start_year + 1
-    return min(1.0, max(0.1, (year - assumptions.projection_start_year + 1) / years))
+def _scenario_role(scenario_id: str) -> str:
+    return {
+        "no_sez_specific_incentive": "Ordinary-reference counterfactual with no SEZ-specific deduction and no incentive-caused incremental activity.",
+        "status_quo_to_2035": "Protected current treatment through natural expiry or June 2035 hard cap.",
+        "accelerated_removal": "Earlier removal for data-complete non-compliant enterprises; compliant records remain on status quo.",
+        "cost_based_regime": "Ordinary CIT plus temporary CAPEX/R&D/training deductions for support-review-ready synthetic records only.",
+        "combined_transition_pilot": "Blends non-pilot treatment and pilot cost-based treatment by explicit uptake share.",
+    }[scenario_id]
+
+
+def _scenario_additionality_text(scenario_id: str) -> str:
+    return {
+        "no_sez_specific_incentive": "No incentive-caused incremental income is added to the reference path.",
+        "status_quo_to_2035": "Uses a reduced synthetic status-quo additionality factor; not a causal estimate.",
+        "accelerated_removal": "Non-compliant records receive no incentive-caused incremental income after removal.",
+        "cost_based_regime": "Uses low/base/high synthetic response assumptions by instrument package and support-readiness status.",
+        "combined_transition_pilot": "Blends non-pilot and full-pilot additionality consequences by uptake share.",
+    }[scenario_id]
+
+
+def _scenario_cit_transition_text(scenario_id: str) -> str:
+    if scenario_id == "cost_based_regime":
+        return "No hidden CIT phase-in; ordinary statutory CIT applies before cost-based deductions."
+    if scenario_id == "status_quo_to_2035":
+        return "CIT holiday/protected exemption retained to the 2035 cap where assumed."
+    if scenario_id == "accelerated_removal":
+        return "Non-compliant records move to ordinary statutory CIT; no reduced-CIT phase-in is applied."
+    return "Ordinary statutory CIT."
 
 
 def _annualized_customs(cumulative: float, year: int, assumptions: CalibrationAssumptions) -> float:

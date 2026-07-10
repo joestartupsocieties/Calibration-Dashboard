@@ -28,6 +28,13 @@ def enterprise(**overrides: object) -> pd.Series:
         "eligible_rd_pkr_m": 20.0,
         "eligible_training_pkr_m": 10.0,
         "customs_exemption_pkr_m_cumulative": 50.0,
+        "evidence_model_ready": True,
+        "support_eligibility_status": "potential_cost_based_review_input_subject_to_validation",
+        "developer_compliance_status": "compliant",
+        "enterprise_compliance_status": "compliant",
+        "legal_risk_level": "low",
+        "fiscal_data_status": "validated",
+        "additionality_confidence": "High",
     }
     data.update(overrides)
     return pd.Series(data)
@@ -42,6 +49,7 @@ def test_cost_based_formula_uses_incremental_deductions_and_never_negative_tax()
         training_super_deduction_total_rate=1.5,
         utilization_rate=0.80,
         annual_deduction_cap_pkr_m=500,
+        qualifying_expenditure_threshold_pkr_m=0,
     )
 
     rows = simulate_enterprise(enterprise(), assumptions, "cost_based_regime", "base")
@@ -56,7 +64,7 @@ def test_cost_based_formula_uses_incremental_deductions_and_never_negative_tax()
 
     high_deduction_rows = simulate_enterprise(
         enterprise(eligible_capex_pkr_m=10000.0),
-        CalibrationAssumptions(annual_deduction_cap_pkr_m=999999.0, capex_deduction_rate=2.0),
+        CalibrationAssumptions(annual_deduction_cap_pkr_m=999999.0, capex_deduction_rate=2.0, qualifying_expenditure_threshold_pkr_m=0),
         "cost_based_regime",
         "base",
     )
@@ -92,8 +100,106 @@ def test_revenue_neutral_solver_returns_bounded_status() -> None:
         additionality_case="base",
     )
 
-    assert result["status"] == "entire_search_range_within_envelope"
-    assert result["value"] == 2.0
+    assert result["status"] == "no_binding_upper_bound_identified_within_tested_range"
+    assert result["value"] is None
+
+
+def test_scenario_behavior_is_distinct_for_noncompliant_archetype() -> None:
+    assumptions = CalibrationAssumptions(qualifying_expenditure_threshold_pkr_m=0)
+    noncompliant = enterprise(
+        compliance_status="non_compliant",
+        developer_compliance_status="non_compliant",
+        enterprise_compliance_status="partial",
+        support_eligibility_status="not_support_ready_compliance_or_cure_required",
+    )
+
+    status = pd.DataFrame(simulate_enterprise(noncompliant, assumptions, "status_quo_to_2035", "base"))
+    accelerated = pd.DataFrame(simulate_enterprise(noncompliant, assumptions, "accelerated_removal", "base"))
+
+    assert accelerated["tax_collected_pkr_m"].sum() >= status["tax_collected_pkr_m"].sum()
+    assert accelerated["gross_fiscal_cost_pkr_m"].sum() <= status["gross_fiscal_cost_pkr_m"].sum()
+
+
+def test_combined_pilot_uptake_interpolates_consistently() -> None:
+    ent = enterprise(pilot_cohort_flag=True)
+    no_uptake = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(pilot_uptake_share=0.0, qualifying_expenditure_threshold_pkr_m=0), "combined_transition_pilot", "base")
+    )
+    half_uptake = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(pilot_uptake_share=0.5, qualifying_expenditure_threshold_pkr_m=0), "combined_transition_pilot", "base")
+    )
+    full_uptake = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(pilot_uptake_share=1.0, qualifying_expenditure_threshold_pkr_m=0), "combined_transition_pilot", "base")
+    )
+    non_pilot = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(qualifying_expenditure_threshold_pkr_m=0), "status_quo_to_2035", "base")
+    )
+    full_cost_based = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+
+    assert no_uptake["gross_fiscal_cost_pkr_m"].sum() == non_pilot["gross_fiscal_cost_pkr_m"].sum()
+    assert full_uptake["gross_fiscal_cost_pkr_m"].sum() == full_cost_based["gross_fiscal_cost_pkr_m"].sum()
+    assert full_uptake["gross_fiscal_cost_pkr_m"].sum() < half_uptake["gross_fiscal_cost_pkr_m"].sum() < no_uptake["gross_fiscal_cost_pkr_m"].sum()
+
+
+def test_no_incentive_reference_receives_no_incentive_caused_additionality() -> None:
+    rows = simulate_enterprise(enterprise(), CalibrationAssumptions(qualifying_expenditure_threshold_pkr_m=0), "no_sez_specific_incentive", "high")
+    assert all(row["incremental_assessed_income_pkr_m"] == 0 for row in rows)
+
+
+def test_parameter_controls_change_results_when_relevant() -> None:
+    ent = pd.Series(
+        enterprise(
+            baseline_assessed_income_pkr_m=50_000.0,
+            eligible_capex_pkr_m=10_000.0,
+            eligible_rd_pkr_m=1_000.0,
+            eligible_training_pkr_m=500.0,
+        )
+    )
+    low_rate = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(capex_deduction_rate=0.25, annual_deduction_cap_pkr_m=50_000, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    high_rate = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(capex_deduction_rate=1.25, annual_deduction_cap_pkr_m=50_000, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    low_cap = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(capex_deduction_rate=1.25, annual_deduction_cap_pkr_m=500, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    high_cap = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(capex_deduction_rate=1.25, annual_deduction_cap_pkr_m=50_000, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    capex_only = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(instrument_package="capex_only", annual_deduction_cap_pkr_m=50_000, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    rd_training = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(instrument_package="rd_training", annual_deduction_cap_pkr_m=50_000, qualifying_expenditure_threshold_pkr_m=0), "cost_based_regime", "base")
+    )
+    threshold_blocks = pd.DataFrame(
+        simulate_enterprise(ent, CalibrationAssumptions(qualifying_expenditure_threshold_pkr_m=99_999), "cost_based_regime", "base")
+    )
+
+    assert high_rate["gross_fiscal_cost_pkr_m"].sum() > low_rate["gross_fiscal_cost_pkr_m"].sum()
+    assert high_cap["gross_fiscal_cost_pkr_m"].sum() > low_cap["gross_fiscal_cost_pkr_m"].sum()
+    assert capex_only["gross_fiscal_cost_pkr_m"].sum() != rd_training["gross_fiscal_cost_pkr_m"].sum()
+    assert threshold_blocks["deduction_generated_pkr_m"].sum() == 0
+
+
+def test_fiscal_identities_and_carryforward_reconcile() -> None:
+    rows = pd.DataFrame(
+        simulate_enterprise(
+            enterprise(baseline_assessed_income_pkr_m=400.0, eligible_capex_pkr_m=5_000.0),
+            CalibrationAssumptions(capex_deduction_rate=1.25, annual_deduction_cap_pkr_m=10_000, qualifying_expenditure_threshold_pkr_m=0),
+            "cost_based_regime",
+            "base",
+        )
+    )
+
+    tax_expenditure_identity = rows["benchmark_tax_liability_pkr_m"] - rows["tax_collected_pkr_m"]
+    assert (rows["tax_expenditure_pkr_m"] - tax_expenditure_identity).abs().max() < 1e-3
+    assert (rows["cash_net_revenue_pkr_m"] - (rows["tax_collected_pkr_m"] - rows["incremental_admin_cost_pkr_m"] - rows["other_government_cash_cost_pkr_m"])).abs().max() < 1e-3
+    assert rows["tax_due_pkr_m"].min() >= 0
+    assert rows["closing_carryforward_pkr_m"].max() >= 0
 
 
 def test_pipeline_writes_d6_workbook_sheets(tmp_path: Path) -> None:
@@ -107,6 +213,9 @@ def test_pipeline_writes_d6_workbook_sheets(tmp_path: Path) -> None:
     assert (output_dir / "calibration_annual_enterprise.csv").stat().st_size > 0
     assert (output_dir / "calibration_portfolio_summary.csv").stat().st_size > 0
     assert (output_dir / "calibration_parameter_ranges.csv").stat().st_size > 0
+    frontier = result["frames"]["calibration_parameter_ranges"]
+    assert frontier["feasible_flag"].astype(bool).any()
+    assert (~frontier["feasible_flag"].astype(bool)).any()
 
     import openpyxl
 

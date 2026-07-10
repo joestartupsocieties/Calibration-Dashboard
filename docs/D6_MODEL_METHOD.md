@@ -1,124 +1,160 @@
-# D6 Calibration Model Method
+# D6 Model Method
 
-This document describes the thin-slice quantitative model used in the synthetic demo build. It is for workflow review only. It does not approve incentives, set tax rates, determine final fiscal cost, or replace BOI, FBR, Finance Division, SEZA, legal, IMF, programme, fiscal-modelling, or human review.
+This document describes the synthetic D6 calibration proof of concept. It is an executable architecture and governed workflow demonstration, not a validated fiscal model or final policy recommendation.
 
-## Scope
+## Scenario Definitions
 
-The model connects enterprise-level synthetic evidence to D6 calibration analysis:
+| Scenario | Meaning |
+| --- | --- |
+| `no_sez_specific_incentive` | Ordinary-reference CIT path. No SEZ-specific deduction and no incentive-caused incremental activity. |
+| `status_quo_to_2035` | Existing protected treatment through natural expiry or the 30 June 2035 hard cap where assumed. |
+| `accelerated_removal` | Data-complete non-compliant enterprises move earlier to ordinary CIT. Compliant records remain on status quo. |
+| `cost_based_regime` | Ordinary CIT plus temporary cost-based deductions for synthetic support-review-ready records only. No hidden CIT phase-in. |
+| `combined_transition_pilot` | Blends the applicable non-pilot treatment and full cost-based pilot treatment by explicit uptake share. |
 
-- 2026-2035 annual enterprise projection.
-- Status-quo revenue-foregone baseline.
-- Accelerated-removal scenario.
-- Cost-based regime scenario.
-- Combined transition plus pilot scenario.
-- No-SEZ-specific-incentive reference state.
-- Zone and portfolio aggregation using explicit sample weights.
-- Revenue-neutral parameter search against a D5 fiscal envelope placeholder.
-- D7 pilot handoff fields for verification, monitoring, and launch dependencies.
+## Model Readiness Versus Policy Eligibility
 
-The public/default app uses a synthetic demo dataset. Real use requires validated BOI/SEZA/FBR/Finance/legal source data, enterprise-level evidence, and D4/D5 clearance.
+`evidence_model_ready` means the synthetic enterprise has enough financial evidence to calculate the scenario.
 
-## Core Input Conventions
+It does not mean the enterprise should receive support. The model separately reports:
 
-Enterprise-level data is preferred for D6 calculations. Zone-level totals are treated as control totals for reconciliation rather than added again.
+- `support_eligibility_status`
+- `transition_treatment_status`
+- `blocked_reason`
 
-- USD inputs are converted to PKR using `fx_pkr_per_usd`.
-- `cit_foregone_pkr_m_2026` and `tax_paid_pkr_m_2026` are used to infer a benchmark tax base.
-- `customs_exemption_pkr_m_cumulative` is cumulative and is annualized only through the explicit customs schedule.
-- CAPEX/R&D/training values are claim-base inputs for illustrative deduction modelling.
-- Enterprise records are excluded from D6 calculations unless legal, fiscal, compliance, cohort-scope, and benchmark-tax checks clear.
-- EPZ records are excluded from the default SEZ calibration slice.
+A data-complete non-compliant enterprise can therefore be model-ready for accelerated-removal calculations while being blocked from new cost-based support review.
 
-## Formula Summary
+## Counterfactual And Additionality
 
-Benchmark tax:
+The no-incentive reference path receives no incentive-caused incremental income.
+
+For incentive scenarios, incremental assessed income is a synthetic structural assumption, not a causal estimate:
 
 ```text
-ordinary_benchmark_tax = cit_foregone_2026 + tax_paid_2026
-baseline_assessed_income = ordinary_benchmark_tax / statutory_cit_rate
-benchmark_tax_year_t = assessed_income_year_t * statutory_cit_rate
+incremental_assessed_income_t =
+  prior_year_responsive_expenditure
+  * scenario_additionality_share
+  * taxable_return_on_incremental_expenditure
 ```
 
-Growth:
+The `low`, `base`, and `high` additionality cases are sensitivity assumptions. Reported production or construction is not treated as proof that incentives caused activity.
+
+## Fiscal Identities
+
+The model distinguishes the core fiscal measures:
 
 ```text
-assessed_income_year_t = baseline_assessed_income * (1 + assessed_income_growth)^t
-eligible_expenditure_year_t = 2026_eligible_expenditure * (1 + eligible_expenditure_growth)^t
+benchmark_tax_liability = assessed_income_before_relief * statutory_cit_rate
+tax_collected = tax_due
+tax_expenditure = benchmark_tax_liability - tax_collected
+cash_net_revenue = tax_collected - incremental_admin_cost - other_government_cash_cost
+fiscal_impact_vs_reference = cash_net_revenue - ordinary_reference_tax
+gross_fiscal_cost = tax_expenditure + customs_expenditure + incremental_admin_cost + other_government_cash_cost
 ```
 
-Additionality:
+The model does not subtract tax expenditure from tax collected and call that net fiscal position. `cash_net_revenue` is the cash concept; `tax_expenditure` is the benchmark-relative foregone-revenue concept.
 
-```text
-incremental_assessed_income_year_t =
-  prior_year_qualifying_expenditure * additionality_share * taxable_return_on_incremental_expenditure
-```
+## Cost-Based Deduction Formula
 
-The model reports low/base/high additionality cases. Reported production or construction is not treated as proof that incentives caused activity.
-
-Status quo:
-
-```text
-tax_due = benchmark_tax * (1 - current_holiday_exemption_share) through 2035
-direct_CIT_expenditure = benchmark_tax - tax_due
-customs_expenditure = cumulative_customs_exemption / customs_annualization_years during the schedule only
-```
-
-Cost-based regime:
+The cost-based scenario applies ordinary CIT first, then temporary deductions:
 
 ```text
 ordinary_capex_offset = capex / ordinary_capex_depreciation_years
 capex_incremental_deduction = max(0, capex * capex_deduction_rate - ordinary_capex_offset)
 rd_incremental_deduction = rd_spend * (rd_super_deduction_total_rate - 1)
 training_incremental_deduction = training_spend * (training_super_deduction_total_rate - 1)
-deduction_generated = min((capex + rd + training increments) * utilization_rate, annual_deduction_cap)
-taxable_income_after_deduction = max(0, assessed_income - deduction_used)
-tax_due = taxable_income_after_deduction * statutory_cit_rate * phase_in_factor
 ```
 
-Unused deductions may carry forward for the configured number of years and are used FIFO. Tax is floored at zero.
+The default cost-based scenario does not include a reduced-CIT phase-in.
 
-Portfolio aggregation:
+## Threshold Semantics
+
+`qualifying_expenditure_threshold_pkr_m` is a minimum annual qualifying expenditure threshold. If total annual qualifying CAPEX/R&D/training expenditure is below the threshold, no new deduction claim is generated for that enterprise-year.
+
+If the threshold is met:
 
 ```text
-weighted_value = enterprise_value * aggregation_weight
-NPV = sum(weighted_value_year_t * discount_factor_year_t)
+deduction_generated =
+  min(incremental_deduction_base * utilization_rate, annual_deduction_cap_pkr_m)
 ```
 
-Revenue-neutral search:
+Unused deductions carry forward FIFO for the configured number of years. Tax due is never allowed to fall below zero.
 
-The parameter search tests whether a cost-based setting remains within the fiscal envelope. If no D5 envelope is supplied, the synthetic proxy envelope is the NPV gross fiscal cost of the status-quo-to-2035 scenario.
+## Fiscal Envelope And Frontier
 
-## Scenarios
+`d5_fiscal_envelope_pkr_m` is an illustrative synthetic ceiling. It is not a validated D5 fiscal estimate.
 
-| Scenario | Use |
-| --- | --- |
-| Status quo to 2035 | Baseline fiscal-cost envelope scenario. |
-| Accelerated removal | Transition scenario for non-compliant zones or enterprises. |
-| Cost-based regime | Candidate CAPEX/R&D/training deduction scenario tested against the envelope. |
-| Combined transition plus pilot | Cost-based pilot uptake combined with transition logic. |
-| No SEZ-specific incentive | Reference tax benchmark, not a transition-policy substitute. |
+The feasible frontier uses a transparent grid over:
 
-## Output Review Checks
+- instrument package
+- CAPEX rate
+- annual cap
+- qualifying threshold
+- utilization rate
+- pilot uptake
+- additionality case
 
-Reviewers should inspect:
+For each combination the model reports:
 
-- `calibration_model_readiness.csv` before using any numeric output.
-- `calibration_reconciliation.csv` to identify enterprise-vs-zone control mismatches.
-- `calibration_parameter_ranges.csv` before discussing caps or rates.
-- `calibration_verification_rules.csv` before discussing administrative feasibility.
-- `calibration_d7_handoff.csv` before translating D6 outputs into D7 pilot design.
+- tested fiscal cost
+- fiscal envelope
+- feasible/infeasible flag
+- binding constraint
+- incremental assessed income
+- administrative workload and cost
+- verification burden
 
-## Unresolved Policy Inputs
+If the whole tested range is feasible, the output says no binding upper bound was identified within the tested range. If no combination is feasible, it says no feasible setting was found.
 
-The thin-slice model intentionally keeps these choices explicit:
+## Uptake Blending
 
-- D5 fiscal envelope amount.
-- Legal status and grandfathering/sunset constraints from D4.
-- Cohort eligibility policy for the cost-based regime.
-- Enterprise claim-verification rules and disallowance rules.
-- Treatment of carry-forward after 30 June 2035.
+For `combined_transition_pilot`:
+
+```text
+combined_result =
+  non_pilot_result * (1 - pilot_uptake_share)
+  + full_cost_based_pilot_result * pilot_uptake_share
+```
+
+A 0% uptake setting equals the applicable non-pilot treatment. A 100% uptake setting equals the full pilot treatment for the pilot cohort. Intermediate uptake interpolates consistently.
+
+## Administrative-Cost Method
+
+Administrative feasibility is illustrative and uses:
+
+```text
+review_hours =
+  admin_review_hours_per_claim
+  + admin_audit_hours_per_claim * audit_sample_rate
+
+admin_cost =
+  fixed_admin_cost_per_claim_pkr_m
+  + review_hours * admin_cost_per_review_hour_pkr_m
+```
+
+The model reports review workload hours and indicative FTE requirements. These are capacity assumptions, not validated institutional estimates.
+
+## D7 Recalibration Rules
+
+The D7 handoff table includes proposed pilot triggers:
+
+- fiscal cost exceeds the approved envelope
+- verified additionality falls below the agreed assumption
+- claim-disallowance rate exceeds threshold
+- processing time or audit backlog exceeds capacity
+- uptake is materially outside the expected range
+- compliance or verification failure occurs
+
+For each trigger the output identifies metric, threshold, review frequency, data owner, decision owner, default action, and affected parameter.
+
+## Remaining Unresolved Choices
+
+- Valid D5 fiscal envelope and national scaling.
+- D4 legal authority, grandfathering, and transition commitments.
 - FBR/customs validation of tax and exemption records.
-- Additionality, counterfactual, displacement, and net-impact evidence.
-- Whether any pilot should launch, and if so which zones or enterprises are selected.
+- Final treatment of customs exemptions.
+- Additionality and counterfactual evidence.
+- Displacement and market-distortion analysis.
+- Pilot zone and enterprise selection.
+- Final claim-verification rules and disallowance process.
 
-No pilot zone is selected by this model.
