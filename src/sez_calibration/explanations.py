@@ -76,7 +76,7 @@ def _memo(rec: pd.Series) -> str:
     legal_unknown = clean_text(rec.get("legal_risk_level")).lower() in {"", "unknown"}
     fiscal_unknown = clean_text(rec.get("fiscal_exposure_level")).lower() in {"", "unknown"}
 
-    if activity == "operating_productive" and confidence in {"medium", "high"}:
+    if activity in {"reported_operating_activity", "operating_productive"} and confidence in {"medium", "high"}:
         because = "reported data shows production activity and medium/high data confidence"
     elif activity == "moving_toward_production":
         because = "reported data shows construction activity but not yet production"

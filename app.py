@@ -59,10 +59,10 @@ UI_CACHE_VERSION = APP_VERSION
 SHOW_ADVANCED_SCENARIOS = os.getenv("SHOW_ADVANCED_SCENARIOS") == "1"
 
 PAGES = [
-    "Executive Triage",
-    "Case Review",
-    "Source-Data Confidence",
-    "Work-Product Exports",
+    "Calibration Analysis",
+    "Readiness Triage",
+    "Case Calibration",
+    "Evidence & Exports",
     "About / Limitations",
 ]
 if SHOW_ADVANCED_SCENARIOS:
@@ -383,10 +383,11 @@ FIELD_LABELS = {
     "water_status": "Water",
     "wastewater_status": "Wastewater",
     "roads_status": "Roads",
-    "source_file": "Source Package",
+    "source_file": "Structured Dataset",
     "source_row": "Source Row",
     "data_confidence_score": "Confidence Score",
     "data_confidence_band": "Source-Data Confidence",
+    "reported_operating_activity": "Reported operating activity",
     "activity_category": "Activity Classification",
     "recommended_treatment": "Provisional Treatment",
     "hard_gates_display": "Open Validation Gates",
@@ -475,7 +476,8 @@ def inject_css() -> None:
         """
         <style>
         [data-testid="stSidebar"], [data-testid="collapsedControl"] {display: none;}
-        .block-container {padding-top: 0.65rem; padding-bottom: 2.2rem; max-width: 1320px;}
+        .block-container {padding-top: 2.35rem; padding-bottom: 2.2rem; max-width: 1320px;}
+        .stRadio input[type="radio"] {accent-color: #0f766e;}
         h1, h2, h3, h4 {letter-spacing: 0;}
         h3 {font-size: 1.18rem; margin-top: 1.1rem;}
         h4 {font-size: 1rem; margin-top: 0.9rem;}
@@ -806,24 +808,28 @@ def apply_posture_defaults() -> None:
 
 def initialize_state() -> None:
     legacy_page_map = {
-        "Executive View": "Executive Triage",
-        "Zone Explorer": "Case Review",
-        "Recommendation Engine": "Case Review",
-        "Screening Output Engine": "Case Review",
-        "Data Intake": "Source-Data Confidence",
-        "Data Validation": "Source-Data Confidence",
-        "Data Validation & Source Confidence": "Source-Data Confidence",
-        "Data Confidence": "Source-Data Confidence",
-        "KPI Assurance": "Source-Data Confidence",
-        "Export Memo": "Work-Product Exports",
-        "Export": "Work-Product Exports",
+        "Executive View": "Readiness Triage",
+        "Executive Triage": "Readiness Triage",
+        "Zone Explorer": "Case Calibration",
+        "Case Review": "Case Calibration",
+        "Recommendation Engine": "Case Calibration",
+        "Screening Output Engine": "Case Calibration",
+        "Data Intake": "Evidence & Exports",
+        "Data Validation": "Evidence & Exports",
+        "Data Validation & Source Confidence": "Evidence & Exports",
+        "Data Confidence": "Evidence & Exports",
+        "Source-Data Confidence": "Evidence & Exports",
+        "KPI Assurance": "Evidence & Exports",
+        "Export Memo": "Evidence & Exports",
+        "Work-Product Exports": "Evidence & Exports",
+        "Export": "Evidence & Exports",
     }
     if "current_page" not in st.session_state:
-        st.session_state.current_page = "Executive Triage"
+        st.session_state.current_page = "Calibration Analysis"
     elif st.session_state.current_page in legacy_page_map:
         st.session_state.current_page = legacy_page_map[st.session_state.current_page]
     elif st.session_state.current_page not in PAGES:
-        st.session_state.current_page = "Executive Triage"
+        st.session_state.current_page = "Calibration Analysis"
     if st.session_state.get("policy_posture_preset") == "Data confidence conservative":
         st.session_state.policy_posture_preset = "Data-quality conservative"
     if "policy_posture_preset" not in st.session_state or st.session_state.policy_posture_preset not in POSTURE_DEFAULTS:
@@ -835,6 +841,11 @@ def initialize_state() -> None:
     st.session_state.anonymize_zone_names = True
     st.session_state.setdefault("demo_case_key", "zone_a")
     st.session_state.data_mode = "Synthetic demo data"
+    st.session_state.setdefault("d6_instrument_package", "full")
+    st.session_state.setdefault("d6_capex_deduction_rate", 1.0)
+    st.session_state.setdefault("d6_annual_deduction_cap_pkr_m", 350.0)
+    st.session_state.setdefault("d6_utilization_rate", 0.80)
+    st.session_state.setdefault("d6_discount_rate", 0.12)
 
 
 def scenario_from_state() -> dict[str, object]:
@@ -855,6 +866,11 @@ def scenario_from_state() -> dict[str, object]:
             st.session_state.prefer_non_fiscal_when_additionality_uncertain
         ),
         "diagnostic_only": bool(st.session_state.diagnostic_only),
+        "d6_instrument_package": str(st.session_state.d6_instrument_package),
+        "d6_capex_deduction_rate": float(st.session_state.d6_capex_deduction_rate),
+        "d6_annual_deduction_cap_pkr_m": float(st.session_state.d6_annual_deduction_cap_pkr_m),
+        "d6_utilization_rate": float(st.session_state.d6_utilization_rate),
+        "d6_discount_rate": float(st.session_state.d6_discount_rate),
     }
 
 
@@ -907,7 +923,7 @@ def demo_case_catalog(recommendations: pd.DataFrame) -> list[dict[str, object]]:
     legal_status = recommendations.get("legal_status", pd.Series("", index=recommendations.index)).astype(str)
 
     masks = {
-        "zone_a": activity.eq("operating_productive") & band.isin(["high", "medium"]),
+        "zone_a": activity.isin(["reported_operating_activity", "operating_productive"]) & band.isin(["high", "medium"]),
         "zone_b": activity.eq("moving_toward_production"),
         "zone_c": band.isin(["low", "do_not_use"]) | treatment.str.contains("More data required", case=False, na=False),
         "zone_d": (
@@ -1167,7 +1183,8 @@ def visible_text(value: object, default: str = "Not available") -> str:
         "Missing": "Not yet validated",
         "missing": "not yet validated",
         "do_not_use": "Do not use for decision",
-        "operating_productive": "Operating / productive",
+        "reported_operating_activity": "Reported operating activity",
+        "operating_productive": "Reported operating activity",
         "moving_toward_production": "Moving toward production",
         "allotted_but_inactive": "Allotment-only / not yet productive",
         "vacant_or_speculative": "Idle / weak activity evidence",
@@ -1333,7 +1350,8 @@ def decode_reason_codes(codes: object, reason_codes: dict[str, str]) -> pd.DataF
 
 def activity_label(value: object) -> str:
     labels = {
-        "operating_productive": "Operating / productive",
+        "reported_operating_activity": "Reported operating activity",
+        "operating_productive": "Reported operating activity",
         "moving_toward_production": "Moving toward production",
         "allotted_but_inactive": "Allotment-only / not yet productive",
         "vacant_or_speculative": "Idle / weak activity evidence",
@@ -1545,6 +1563,9 @@ def selected_zone_summary(row: pd.Series) -> pd.DataFrame:
 def selected_zone_interpretation(row: pd.Series) -> pd.DataFrame:
     activity = str(row.get("activity_category") or "").strip()
     activity_text = {
+        "reported_operating_activity": (
+            "Reported data indicates production activity. This is evidence of activity, not proof that incentives caused it."
+        ),
         "operating_productive": (
             "Reported data indicates production activity. This is evidence of activity, not proof that incentives caused it."
         ),
@@ -2426,6 +2447,460 @@ def render_footer() -> None:
     )
 
 
+def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
+    st.markdown("### Calibration Analysis")
+    st.caption(
+        "Thin-slice D6 calibration view using synthetic enterprise evidence, explicit assumptions, "
+        "2026-2035 annual outputs, and D5/D7 handoff artifacts."
+    )
+    callout_card(
+        "What this page demonstrates",
+        "The framework compares status-quo treatment, accelerated removal, cost-based regime, combined transition/pilot, "
+        "and no-SEZ-specific-incentive reference states. Numeric outputs are illustrative synthetic results for workflow review only.",
+    )
+
+    annual = frames.get("calibration_annual_enterprise", pd.DataFrame())
+    portfolio = frames.get("calibration_portfolio_summary", pd.DataFrame())
+    params = frames.get("calibration_parameter_ranges", pd.DataFrame())
+    sensitivity = frames.get("calibration_sensitivity", pd.DataFrame())
+    assumptions = frames.get("calibration_assumptions", pd.DataFrame())
+    scenario_defs = frames.get("calibration_scenario_definitions", pd.DataFrame())
+    verification = frames.get("calibration_verification_rules", pd.DataFrame())
+    readiness = frames.get("calibration_model_readiness", pd.DataFrame())
+    d7 = frames.get("calibration_d7_handoff", pd.DataFrame())
+
+    if annual.empty or portfolio.empty:
+        st.warning("D6 annual outputs are blocked until enterprise-level financial evidence clears D4/D5/compliance gates.")
+        if not readiness.empty:
+            st.dataframe(friendly_dataframe(readiness), width="stretch", hide_index=True)
+        return
+
+    base = portfolio[portfolio["additionality_case"].astype(str).eq("base")]
+    status_row = _portfolio_row(base, "status_quo_to_2035")
+    cost_row = _portfolio_row(base, "cost_based_regime")
+    no_sez_row = _portfolio_row(base, "no_sez_specific_incentive")
+    max_capex = _parameter_value(params, "base", "max_revenue_neutral_capex_rate")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        metric_card("Gate-cleared enterprise records", summary.get("calibration_model_ready_enterprise_count", 0), "Synthetic D6 slice")
+    with c2:
+        metric_card("Projection period", _year_range(annual), "Annual model outputs")
+    with c3:
+        metric_card("Scenarios", portfolio["scenario_id"].nunique(), "Transition states")
+    with c4:
+        metric_card("Status-quo NPV cost", _pkr_m(status_row.get("npv_gross_fiscal_cost_pkr_m")), "Base additionality")
+    with c5:
+        metric_card("Cost-based NPV cost", _pkr_m(cost_row.get("npv_gross_fiscal_cost_pkr_m")), f"Max CAPEX rate: {display_value(max_capex)}")
+
+    scenario_options = _scenario_options(scenario_defs, portfolio)
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        selected_scenario = st.selectbox("Transition scenario", list(scenario_options.keys()), index=_default_scenario_index(scenario_options, "cost_based_regime"))
+    with col2:
+        additionality_case = st.selectbox("Additionality case", ["base", "low", "high"], index=0)
+    with col3:
+        view_level = st.selectbox("View level", ["Portfolio", "Zone", "Enterprise"], index=0)
+    selected_scenario_id = scenario_options[selected_scenario]
+
+    package_labels = {
+        "full": "CAPEX / R&D / training package",
+        "capex_only": "CAPEX-only package",
+        "rd_training": "R&D / training package",
+    }
+    st.caption("Changing the controls below reruns the same D6 pipeline path used by the UI and generated outputs.")
+    p1, p2, p3, p4, p5 = st.columns([1.8, 1, 1, 1, 1])
+    with p1:
+        st.selectbox(
+            "Instrument package",
+            list(package_labels.keys()),
+            format_func=lambda value: package_labels[value],
+            key="d6_instrument_package",
+        )
+    with p2:
+        st.number_input("CAPEX rate", min_value=0.0, max_value=2.0, step=0.05, key="d6_capex_deduction_rate")
+    with p3:
+        st.number_input(
+            "Annual cap (PKR m)",
+            min_value=0.0,
+            max_value=1000.0,
+            step=25.0,
+            key="d6_annual_deduction_cap_pkr_m",
+        )
+    with p4:
+        st.number_input("Utilization", min_value=0.0, max_value=1.0, step=0.05, key="d6_utilization_rate")
+    with p5:
+        st.number_input("Discount rate", min_value=0.0, max_value=0.5, step=0.01, key="d6_discount_rate")
+
+    st.markdown("#### Scenario Comparison")
+    comparison = _portfolio_comparison_table(portfolio, additionality_case)
+    st.dataframe(comparison, width="stretch", hide_index=True)
+
+    chart_df = _portfolio_cost_chart(annual, additionality_case, selected_scenario_id)
+    if not chart_df.empty:
+        st.line_chart(chart_df)
+
+    st.markdown("#### Annual Results")
+    annual_view = _annual_view(annual, selected_scenario_id, additionality_case, view_level)
+    st.dataframe(annual_view, width="stretch", hide_index=True)
+
+    st.markdown("#### Deduction and Carryforward Trace")
+    deduction_trace = _deduction_trace(annual, selected_scenario_id, additionality_case)
+    cols = st.columns(2)
+    with cols[0]:
+        st.dataframe(deduction_trace, width="stretch", hide_index=True)
+    with cols[1]:
+        if not deduction_trace.empty:
+            chart = deduction_trace.set_index("Fiscal year")[
+                ["Deduction generated (PKR m)", "Deduction used (PKR m)", "Closing carryforward (PKR m)"]
+            ]
+            st.line_chart(chart)
+
+    st.markdown("#### Revenue-Neutral Parameter Ranges")
+    st.dataframe(_parameter_ranges_table(params), width="stretch", hide_index=True)
+
+    st.markdown("#### Verification Requirements")
+    st.dataframe(friendly_dataframe(verification), width="stretch", hide_index=True)
+
+    with st.expander("Model assumptions and scenario definitions", expanded=False):
+        st.markdown("##### Core assumptions")
+        st.dataframe(friendly_dataframe(assumptions), width="stretch", hide_index=True)
+        st.markdown("##### Scenario definitions")
+        st.dataframe(friendly_dataframe(scenario_defs), width="stretch", hide_index=True)
+        st.markdown("##### Sensitivity outputs")
+        st.dataframe(_sensitivity_table(sensitivity), width="stretch", hide_index=True)
+
+    with st.expander("D7 pilot handoff", expanded=False):
+        st.dataframe(friendly_dataframe(d7), width="stretch", hide_index=True)
+        st.caption("No pilot zone is selected by this model; these are handoff fields for future D7 design.")
+
+    callout_card(
+        "How to read this",
+        "If a viewer disagrees with an output, the trace shows whether the issue is readiness gating, D5 fiscal evidence, "
+        "additionality/counterfactual assumptions, deduction parameters, administrative verification burden, or D7 pilot design needs.",
+    )
+
+
+def render_case_calibration(
+    frames: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+    reason_codes: dict[str, str],
+    display_recommendations: pd.DataFrame,
+) -> None:
+    st.markdown("### Case Calibration")
+    st.caption("Open one synthetic case and inspect its provisional pathway, D6 readiness, numeric inputs, gates, and owner actions.")
+
+    recs = frames.get("recommendations", pd.DataFrame()).copy()
+    readiness = frames.get("calibration_model_readiness", pd.DataFrame()).copy()
+    inputs = frames.get("calibration_enterprise_inputs", pd.DataFrame()).copy()
+    annual = frames.get("calibration_annual_enterprise", pd.DataFrame()).copy()
+    if recs.empty:
+        st.info("No case records are available.")
+        return
+
+    default_id = _default_case_zone_id(recs, readiness)
+    lookup = recs[["zone_id", "zone_name", "province"]].drop_duplicates().copy()
+    lookup["Display"] = lookup.apply(
+        lambda row: f"{display_value(row['zone_name'])} - {display_value(row.get('province'))}", axis=1
+    )
+    default_matches = lookup.index[lookup["zone_id"].astype(str).eq(str(default_id))].tolist()
+    default_index = int(lookup.index.get_loc(default_matches[0])) if default_matches else 0
+    selected_display = st.selectbox("Case", lookup["Display"].tolist(), index=default_index)
+    selected_zone_id = lookup.loc[lookup["Display"].eq(selected_display), "zone_id"].iloc[0]
+    rec = recs[recs["zone_id"].astype(str).eq(str(selected_zone_id))].iloc[0]
+    enterprise_rows = inputs[inputs["zone_id"].astype(str).eq(str(selected_zone_id))] if not inputs.empty else pd.DataFrame()
+    readiness_rows = readiness[readiness["zone_id"].astype(str).eq(str(selected_zone_id))] if not readiness.empty else pd.DataFrame()
+
+    st.markdown(
+        "<div class='zone-header-card'>"
+        f"<h3>{html.escape(display_value(rec.get('zone_name')))}</h3>"
+        "<div class='badge-row'>"
+        f"{badge_html(rec.get('province'), 'neutral')}"
+        f"{badge_html(activity_label(rec.get('activity_category')), 'blue')}"
+        f"{badge_html(confidence_label(rec), confidence_tone(rec.get('data_confidence_band')))}"
+        f"{badge_html('Human review required', 'warning')}"
+        "</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    cols = st.columns(4)
+    with cols[0]:
+        summary_card("Review pathway", treatment_label(rec.get("recommended_treatment")), "Provisional")
+    with cols[1]:
+        model_ready = bool(readiness_rows["model_ready"].astype(str).str.lower().eq("true").any()) if not readiness_rows.empty else False
+        summary_card("D6 model status", "Gate-cleared" if model_ready else "Blocked", "No final treatment")
+    with cols[2]:
+        summary_card("Open gates", len(split_reason_codes(rec.get("hard_gates_triggered"))), "Validation items")
+    with cols[3]:
+        summary_card("Validation owner", rec.get("validator_owner"), "Lead reviewer")
+
+    st.markdown("#### Case memo")
+    memo_cols = st.columns([2, 1])
+    with memo_cols[0]:
+        st.markdown(
+            "<div class='case-memo-card'>"
+            "<div class='case-memo-title'>Why this was flagged</div>"
+            f"<div class='case-memo-body'>{html.escape(display_memo_text(rec.get('why')))}</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with memo_cols[1]:
+        st.markdown("##### Reason codes")
+        reason_df = decode_reason_codes(rec.get("reason_codes"), reason_codes)
+        st.dataframe(reason_df, width="stretch", hide_index=True)
+
+    st.markdown("#### D6 calibration support inputs")
+    if not enterprise_rows.empty:
+        input_cols = [
+            "enterprise_id",
+            "sector",
+            "ordinary_benchmark_tax_pkr_m_2026",
+            "baseline_assessed_income_pkr_m",
+            "eligible_capex_pkr_m",
+            "eligible_rd_pkr_m",
+            "eligible_training_pkr_m",
+            "aggregation_weight",
+            "model_ready",
+            "blocked_reason",
+        ]
+        st.dataframe(friendly_dataframe(enterprise_rows, [c for c in input_cols if c in enterprise_rows.columns]), width="stretch", hide_index=True)
+    else:
+        st.info("No enterprise-level synthetic input is mapped to this case.")
+
+    if not readiness_rows.empty and not readiness_rows["model_ready"].astype(str).str.lower().eq("true").any():
+        callout_card(
+            "Calibration output blocked",
+            "No instrument, rate, cap, or sunset can be classified for this case until the listed validation gates are resolved.",
+        )
+        st.dataframe(friendly_dataframe(readiness_rows), width="stretch", hide_index=True)
+    else:
+        case_annual = annual[annual["zone_id"].astype(str).eq(str(selected_zone_id))] if not annual.empty else pd.DataFrame()
+        if not case_annual.empty:
+            st.markdown("##### Annual scenario trace")
+            st.dataframe(_annual_view(case_annual, "cost_based_regime", "base", "Enterprise"), width="stretch", hide_index=True)
+        else:
+            st.info("This case is not included in the gate-cleared D6 annual output slice.")
+
+    with st.expander("Readiness trace / technical details", expanded=False):
+        st.dataframe(friendly_dataframe(readiness_rows), width="stretch", hide_index=True)
+        st.dataframe(friendly_dataframe(display_recommendations[display_recommendations["zone_id"].astype(str).eq(str(selected_zone_id))]), width="stretch", hide_index=True)
+
+
+def render_evidence_exports(
+    frames: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+    reason_codes: dict[str, str],
+    display_recommendations: pd.DataFrame,
+) -> None:
+    st.markdown("### Evidence & Exports")
+    st.caption("Review source-data confidence, calibration evidence checks, and generated work-product exports.")
+    tabs = st.tabs(["Source-data confidence", "Calibration evidence", "Export package"])
+    with tabs[0]:
+        render_data_confidence_mvp(frames, summary)
+    with tabs[1]:
+        st.markdown("#### Model readiness")
+        st.dataframe(friendly_dataframe(frames.get("calibration_model_readiness", pd.DataFrame())), width="stretch", hide_index=True)
+        st.markdown("#### Enterprise-to-zone reconciliation")
+        st.dataframe(friendly_dataframe(frames.get("calibration_reconciliation", pd.DataFrame())), width="stretch", hide_index=True)
+        st.markdown("#### Excluded or blocked records")
+        st.dataframe(friendly_dataframe(frames.get("calibration_excluded_records", pd.DataFrame())), width="stretch", hide_index=True)
+        st.markdown("#### Verification rules")
+        st.dataframe(friendly_dataframe(frames.get("calibration_verification_rules", pd.DataFrame())), width="stretch", hide_index=True)
+    with tabs[2]:
+        render_export_memo(frames, summary, reason_codes, display_recommendations)
+
+
+def _portfolio_row(portfolio: pd.DataFrame, scenario_id: str) -> pd.Series:
+    if portfolio.empty or "scenario_id" not in portfolio.columns:
+        return pd.Series(dtype=object)
+    rows = portfolio[portfolio["scenario_id"].astype(str).eq(scenario_id)]
+    return rows.iloc[0] if not rows.empty else pd.Series(dtype=object)
+
+
+def _parameter_value(params: pd.DataFrame, case: str, field: str) -> object:
+    if params.empty or field not in params.columns:
+        return "Not calculated"
+    rows = params[params["additionality_case"].astype(str).eq(case)]
+    return rows[field].iloc[0] if not rows.empty else "Not calculated"
+
+
+def _pkr_m(value: object) -> str:
+    try:
+        return f"{float(value):,.0f} PKR m"
+    except (TypeError, ValueError):
+        return "Not calculated"
+
+
+def _year_range(annual: pd.DataFrame) -> str:
+    if annual.empty or "fiscal_year" not in annual.columns:
+        return "Not calculated"
+    years = pd.to_numeric(annual["fiscal_year"], errors="coerce").dropna()
+    return f"{int(years.min())}-{int(years.max())}" if not years.empty else "Not calculated"
+
+
+def _scenario_options(scenario_defs: pd.DataFrame, portfolio: pd.DataFrame) -> dict[str, str]:
+    if not scenario_defs.empty and {"scenario_id", "scenario"}.issubset(scenario_defs.columns):
+        return {display_value(row["scenario"]): str(row["scenario_id"]) for _, row in scenario_defs.iterrows()}
+    if not portfolio.empty and {"scenario_id", "scenario"}.issubset(portfolio.columns):
+        return dict(zip(portfolio["scenario"].astype(str), portfolio["scenario_id"].astype(str)))
+    return {"Cost-based regime": "cost_based_regime"}
+
+
+def _default_scenario_index(options: dict[str, str], scenario_id: str) -> int:
+    values = list(options.values())
+    return values.index(scenario_id) if scenario_id in values else 0
+
+
+def _portfolio_comparison_table(portfolio: pd.DataFrame, additionality_case: str) -> pd.DataFrame:
+    if portfolio.empty:
+        return pd.DataFrame()
+    df = portfolio[portfolio["additionality_case"].astype(str).eq(additionality_case)].copy()
+    columns = {
+        "scenario": "Scenario",
+        "npv_gross_fiscal_cost_pkr_m": "NPV gross fiscal cost (PKR m)",
+        "npv_tax_collected_pkr_m": "NPV tax collected (PKR m)",
+        "npv_net_fiscal_position_pkr_m": "NPV net fiscal position (PKR m)",
+        "fiscal_envelope_pkr_m": "Fiscal envelope (PKR m)",
+        "fiscal_envelope_type": "Envelope basis",
+    }
+    view = df[[c for c in columns if c in df.columns]].rename(columns=columns)
+    return _round_numeric(view)
+
+
+def _portfolio_cost_chart(annual: pd.DataFrame, additionality_case: str, selected_scenario_id: str) -> pd.DataFrame:
+    if annual.empty:
+        return pd.DataFrame()
+    scenario_ids = ["status_quo_to_2035", selected_scenario_id, "no_sez_specific_incentive"]
+    df = annual[
+        annual["additionality_case"].astype(str).eq(additionality_case)
+        & annual["scenario_id"].astype(str).isin(scenario_ids)
+    ].copy()
+    if df.empty:
+        return pd.DataFrame()
+    df["Weighted gross fiscal cost (PKR m)"] = pd.to_numeric(df["gross_fiscal_cost_pkr_m"], errors="coerce") * pd.to_numeric(df["aggregation_weight"], errors="coerce")
+    grouped = df.groupby(["fiscal_year", "scenario"], as_index=False)["Weighted gross fiscal cost (PKR m)"].sum()
+    return grouped.pivot(index="fiscal_year", columns="scenario", values="Weighted gross fiscal cost (PKR m)").fillna(0.0)
+
+
+def _annual_view(annual: pd.DataFrame, scenario_id: str, additionality_case: str, view_level: str) -> pd.DataFrame:
+    if annual.empty:
+        return pd.DataFrame()
+    df = annual[
+        annual["scenario_id"].astype(str).eq(scenario_id)
+        & annual["additionality_case"].astype(str).eq(additionality_case)
+    ].copy()
+    if df.empty:
+        return pd.DataFrame()
+    value_cols = [
+        "benchmark_tax_no_sez_pkr_m",
+        "tax_due_pkr_m",
+        "direct_cit_expenditure_pkr_m",
+        "customs_expenditure_pkr_m",
+        "gross_fiscal_cost_pkr_m",
+        "net_fiscal_position_pkr_m",
+        "deduction_generated_pkr_m",
+        "deduction_used_pkr_m",
+        "closing_carryforward_pkr_m",
+    ]
+    if view_level == "Enterprise":
+        columns = ["enterprise_id", "zone_name", "fiscal_year", "enterprise_tax_state"] + value_cols
+        return friendly_dataframe(_round_numeric(df[[c for c in columns if c in df.columns]]))
+    group_cols = ["fiscal_year"] if view_level == "Portfolio" else ["zone_name", "fiscal_year"]
+    grouped = df.groupby(group_cols, as_index=False)[value_cols].sum()
+    return friendly_dataframe(_round_numeric(grouped))
+
+
+def _deduction_trace(annual: pd.DataFrame, scenario_id: str, additionality_case: str) -> pd.DataFrame:
+    if annual.empty:
+        return pd.DataFrame()
+    cols = [
+        "deduction_generated_pkr_m",
+        "deduction_used_pkr_m",
+        "carryforward_used_pkr_m",
+        "deduction_expired_pkr_m",
+        "closing_carryforward_pkr_m",
+        "tax_collected_pkr_m",
+        "direct_cit_expenditure_pkr_m",
+    ]
+    df = annual[
+        annual["scenario_id"].astype(str).eq(scenario_id)
+        & annual["additionality_case"].astype(str).eq(additionality_case)
+    ].copy()
+    if df.empty:
+        return pd.DataFrame()
+    grouped = df.groupby("fiscal_year", as_index=False)[cols].sum()
+    return _round_numeric(
+        grouped.rename(
+            columns={
+                "fiscal_year": "Fiscal year",
+                "deduction_generated_pkr_m": "Deduction generated (PKR m)",
+                "deduction_used_pkr_m": "Deduction used (PKR m)",
+                "carryforward_used_pkr_m": "Carryforward used (PKR m)",
+                "deduction_expired_pkr_m": "Deduction expired (PKR m)",
+                "closing_carryforward_pkr_m": "Closing carryforward (PKR m)",
+                "tax_collected_pkr_m": "Tax collected (PKR m)",
+                "direct_cit_expenditure_pkr_m": "Direct CIT expenditure (PKR m)",
+            }
+        )
+    )
+
+
+def _parameter_ranges_table(params: pd.DataFrame) -> pd.DataFrame:
+    if params.empty:
+        return pd.DataFrame()
+    columns = {
+        "additionality_case": "Additionality case",
+        "capex_rate_status": "CAPEX solver status",
+        "max_revenue_neutral_capex_rate": "Max revenue-neutral CAPEX rate",
+        "annual_cap_status": "Annual cap solver status",
+        "max_revenue_neutral_annual_cap_pkr_m": "Max revenue-neutral annual cap (PKR m)",
+        "rd_total_deduction_rate": "R&D total deduction rate",
+        "training_total_deduction_rate": "Training total deduction rate",
+        "carry_forward_years": "Carry-forward years",
+        "duration_sunset": "Duration / sunset",
+    }
+    return _round_numeric(params[[c for c in columns if c in params.columns]].rename(columns=columns))
+
+
+def _sensitivity_table(sensitivity: pd.DataFrame) -> pd.DataFrame:
+    if sensitivity.empty:
+        return pd.DataFrame()
+    columns = {
+        "sensitivity_axis": "Sensitivity axis",
+        "sensitivity_value": "Sensitivity value",
+        "scenario": "Scenario",
+        "additionality_case": "Additionality case",
+        "npv_gross_fiscal_cost_pkr_m": "NPV gross fiscal cost (PKR m)",
+        "npv_tax_collected_pkr_m": "NPV tax collected (PKR m)",
+        "npv_net_fiscal_position_pkr_m": "NPV net fiscal position (PKR m)",
+    }
+    view = _round_numeric(sensitivity[[c for c in columns if c in sensitivity.columns]].rename(columns=columns))
+    if "Sensitivity value" in view.columns:
+        view["Sensitivity value"] = view["Sensitivity value"].map(display_value)
+    return view
+
+
+def _default_case_zone_id(recs: pd.DataFrame, readiness: pd.DataFrame) -> object:
+    if not readiness.empty and "model_ready" in readiness.columns:
+        ready = readiness[readiness["model_ready"].astype(str).str.lower().eq("true")]
+        if not ready.empty:
+            return ready["zone_id"].iloc[0]
+    for pattern in ["Fiscal/FBR", "Legal", "More data"]:
+        rows = recs[recs["recommended_treatment"].astype(str).str.contains(pattern, case=False, na=False)]
+        if not rows.empty:
+            return rows["zone_id"].iloc[0]
+    return recs["zone_id"].iloc[0]
+
+
+def _round_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for col in out.columns:
+        if pd.api.types.is_numeric_dtype(out[col]):
+            out[col] = out[col].round(4)
+    return out
+
+
 def render_executive_view(frames: dict[str, pd.DataFrame], summary: dict[str, Any], display_recommendations: pd.DataFrame) -> None:
     recommendations = frames["recommendations"]
     triage = executive_triage_table(recommendations)
@@ -2481,7 +2956,7 @@ def render_executive_view(frames: dict[str, pd.DataFrame], summary: dict[str, An
     st.markdown("### Portfolio Triage")
     st.dataframe(filtered, width="stretch", hide_index=True)
     st.caption(
-        f"Showing {len(filtered)} of {len(triage)} zones. Use Case Review to open a focused walkthrough case."
+        f"Showing {len(filtered)} of {len(triage)} zones. Use Case Calibration to open a focused walkthrough case."
     )
 
 
@@ -3240,7 +3715,7 @@ def render_export_memo(
             ROOT / "outputs" / "sez_calibration_demo_outputs.xlsx",
             "sez_calibration_demo_outputs.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Workbook containing the generated triage, explanation, validation, confidence, activity, reason-code, and limitations sheets.",
+            "Workbook containing D6 assumptions, scenarios, annual enterprise outputs, portfolio summary, sensitivity, parameter ranges, readiness triage, validation flags, and D7 handoff sheets.",
         ),
         (
             "Executive Triage Table CSV",
@@ -3250,11 +3725,46 @@ def render_export_memo(
             "Full zone-level provisional review pathway table.",
         ),
         (
-            "Recommendation / Pathway Explanations CSV",
+            "Pathway Rationale CSV",
             ROOT / "outputs" / "recommendation_explanations.csv",
             "recommendation_explanations.csv",
             "text/csv",
             "Plain-English explanation trail and reason-code details.",
+        ),
+        (
+            "Calibration Annual Enterprise CSV",
+            ROOT / "outputs" / "calibration_annual_enterprise.csv",
+            "calibration_annual_enterprise.csv",
+            "text/csv",
+            "Enterprise-year scenario outputs for 2026-2035 synthetic D6 modelling.",
+        ),
+        (
+            "Calibration Portfolio Summary CSV",
+            ROOT / "outputs" / "calibration_portfolio_summary.csv",
+            "calibration_portfolio_summary.csv",
+            "text/csv",
+            "Portfolio-level NPV fiscal-cost and tax-collection summary by scenario and additionality case.",
+        ),
+        (
+            "Calibration Parameter Ranges CSV",
+            ROOT / "outputs" / "calibration_parameter_ranges.csv",
+            "calibration_parameter_ranges.csv",
+            "text/csv",
+            "Revenue-neutral parameter range outputs for CAPEX and annual cap settings.",
+        ),
+        (
+            "Calibration Model Readiness CSV",
+            ROOT / "outputs" / "calibration_model_readiness.csv",
+            "calibration_model_readiness.csv",
+            "text/csv",
+            "Enterprise-level readiness gates explaining which records can enter D6 calculations.",
+        ),
+        (
+            "D7 Handoff CSV",
+            ROOT / "outputs" / "calibration_d7_handoff.csv",
+            "calibration_d7_handoff.csv",
+            "text/csv",
+            "Pilot-design handoff requirements for verification evidence, KPI monitoring, and launch dependencies.",
         ),
         (
             "Source-Data Confidence CSV",
@@ -3338,14 +3848,15 @@ def render_about_limitations(summary: dict[str, Any]) -> None:
     with st.expander("Public demo posture", expanded=True):
         st.write(f"**{DATA_PROFILE_LABEL}.** The public/demo build is for workflow demonstration.")
         st.write(NON_DECISION_STATEMENT)
+        st.write("No pilot zone is selected by this model.")
     with st.expander("Scope and guardrails", expanded=False):
         st.write(
             "Any support-related output is provisional and subject to D4 legal review and D5/FBR/customs verification. "
-            "No final tax rates or incentive awards are calculated."
+            "No final tax rates or incentive awards are calculated. No pilot zone is selected by this model."
         )
     with st.expander("Dataset limits", expanded=False):
         st.write(
-            "This MVP uses hypothetical synthetic zones for workflow demonstration. Do not treat demo screening "
+            "This prototype uses hypothetical synthetic zones for workflow demonstration. Do not treat demo screening "
             "outputs as BOI, SEZA, FBR, Finance, legal, developer, or enterprise records."
         )
         st.write(REAL_USE_REQUIREMENTS)
@@ -3589,7 +4100,7 @@ def render_data_validation(frames: dict[str, pd.DataFrame], summary: dict[str, A
 
 def kpi_need(row: pd.Series) -> str:
     activity = str(row.get("activity_category", ""))
-    if activity == "operating_productive":
+    if activity in {"reported_operating_activity", "operating_productive"}:
         return "Verify production, employment, exports, utility uptime, and fiscal exposure."
     if activity == "moving_toward_production":
         return "Track construction milestones, energization, allottee readiness, and start-of-production evidence."
@@ -3603,7 +4114,7 @@ def kpi_need(row: pd.Series) -> str:
 def readiness_label(row: pd.Series) -> str:
     band = str(row.get("data_confidence_band", ""))
     activity = str(row.get("activity_category", ""))
-    if band in {"medium", "high"} and activity == "operating_productive":
+    if band in {"medium", "high"} and activity in {"reported_operating_activity", "operating_productive"}:
         return "Monitoring-ready subject to D4/D5 validation"
     if activity == "moving_toward_production":
         return "Transition monitoring needed"
@@ -4264,14 +4775,14 @@ display_recommendations = recommendation_view(recommendations)
 
 page = render_header(recommendations, summary)
 
-if page == "Executive Triage":
+if page == "Calibration Analysis":
+    render_calibration_analysis(frames, summary)
+elif page == "Readiness Triage":
     render_executive_view(frames, summary, display_recommendations)
-elif page == "Case Review":
-    render_case_review(frames, reason_codes, display_recommendations)
-elif page == "Source-Data Confidence":
-    render_data_confidence_mvp(frames, summary)
-elif page == "Work-Product Exports":
-    render_export_memo(frames, summary, reason_codes, display_recommendations)
+elif page == "Case Calibration":
+    render_case_calibration(frames, summary, reason_codes, display_recommendations)
+elif page == "Evidence & Exports":
+    render_evidence_exports(frames, summary, reason_codes, display_recommendations)
 elif page == "About / Limitations":
     render_about_limitations(summary)
 elif page == "Scenario Settings" and SHOW_ADVANCED_SCENARIOS:

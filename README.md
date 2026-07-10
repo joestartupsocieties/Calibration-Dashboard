@@ -2,11 +2,11 @@
 
 Provisional decision-support for legal, fiscal, source-data confidence, and pilot-readiness review.
 
-This repository is scoped to a demoable screening flow using fully synthetic hypothetical-zone records by default. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
+This repository is scoped to a demoable D6 calibration-analysis flow using fully synthetic hypothetical-zone and enterprise records by default. It does not make final legal, fiscal, tax, or incentive decisions, does not set final tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
 
 ## Demo Flow
 
-`zone data -> validation flags -> source-data confidence score -> activity classification -> legal/fiscal validation gates -> provisional treatment -> reason codes -> export`
+`structured screening dataset -> validation flags -> source-data confidence -> readiness gates -> enterprise calibration inputs -> 2026-2035 scenario outputs -> revenue-neutral parameter ranges -> D7 handoff -> export`
 
 Hard guardrails:
 
@@ -15,7 +15,10 @@ Hard guardrails:
 - Human review is required.
 - Any support-related output remains subject to D4 legal review and D5/FBR fiscal verification.
 - Any cost-based support is temporary transition support only; all SEZ fiscal incentives phase out by 30 June 2035.
-- The default public/MVP demo uses fully synthetic hypothetical zones and must remain synthetic unless an authorized internal user explicitly switches profiles.
+- The default public demo uses fully synthetic hypothetical zones and enterprises.
+- Legal fields remain placeholders pending D4 legal review.
+- Fiscal/FBR fields remain placeholders pending D5/FBR/customs verification.
+- No pilot zone is selected by the model.
 
 ## How To Run
 
@@ -37,9 +40,9 @@ Run the Streamlit app:
 streamlit run app.py
 ```
 
-The app opens to **Executive Triage** in **Synthetic demo view** for a 3-5 minute walkthrough.
+The app opens to **Calibration Analysis** in **Synthetic demo view** for a 3-5 minute walkthrough.
 
-To run the default public/MVP synthetic demo:
+To run the default public synthetic demo:
 
 ```bash
 python run_demo.py
@@ -58,7 +61,7 @@ On macOS/Linux shells, use `export SEZ_DATA_PROFILE=source` instead.
 
 ## Demo And Source Data
 
-The default MVP demo uses `data/synthetic/SEZ_Key_Indicators_Normalized.csv` and `data/synthetic/legal_fiscal_placeholders.csv`. These files contain hypothetical synthetic zones only, including synthetic D4 legal status, D5/FBR fiscal exposure bands, additionality/counterfactual/effectiveness flags, KPI and pilot-readiness fields, and enterprise-level summaries.
+The default demo uses synthetic files in `data/synthetic/`. These files contain hypothetical zones and enterprises only, including synthetic D4 legal status, D5/FBR fiscal exposure bands, additionality/counterfactual/effectiveness flags, KPI and pilot-readiness fields, enterprise-level summaries, D6 assumptions, aggregation weights, and verification requirements.
 
 The older source-derived structured screening dataset covers 35 detected zone profile records and 35 indicator records based on the source digest. It is retained for internal/reference use, but it is not the default public demo profile.
 
@@ -80,11 +83,11 @@ Real policy use requires validated source inputs, including:
 
 ## Demo Script
 
-1. Start on **Executive Triage**. Explain that the prototype organizes demo-zone records into provisional review pathways; it does not approve incentives or calculate tax/fiscal impacts.
-2. Open **Case Review**. Show one selected case as a human-review screening note with review pathway, reason codes, open gates, next action, validation owner, and human review required.
-3. Open **Source-Data Confidence**. Explain how the app preserves uncertainty, validation flags, source-scope limits, and synthetic-data caveats instead of treating the dataset as complete.
-4. Open **Work-Product Exports**. Download the Excel workbook first, then show the supporting structured CSV/JSON outputs.
-5. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, and no final legal, fiscal, tax, or incentive decision.
+1. Start on **Calibration Analysis**. Show the synthetic 2026-2035 scenario comparison, annual results, deduction/carryforward trace, revenue-neutral parameter ranges, verification requirements, and D7 handoff.
+2. Open **Readiness Triage**. Explain how zone records are routed into provisional review pathways before D6 calculations are used.
+3. Open **Case Calibration**. Show one gate-cleared case and one blocked case. Emphasize that blocked cases get no instrument, rate, cap, or sunset classification until D4/D5/compliance evidence clears.
+4. Open **Evidence & Exports**. Show source-data confidence, model readiness, reconciliation, verification rules, and the downloadable Excel/CSV review package.
+5. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, no final legal/fiscal/tax/incentive decision, and no pilot selected by the model.
 
 ## Outputs
 
@@ -98,12 +101,31 @@ The pipeline writes local outputs to `outputs/`:
 - `data_confidence_scores.csv`
 - `activity_classification.csv`
 - `field_completeness.csv`
+- `calibration_enterprise_inputs.csv`
+- `calibration_scenario_definitions.csv`
+- `calibration_model_readiness.csv`
+- `calibration_excluded_records.csv`
+- `calibration_annual_enterprise.csv`
+- `calibration_zone_aggregation.csv`
+- `calibration_portfolio_summary.csv`
+- `calibration_sensitivity.csv`
+- `calibration_parameter_ranges.csv`
+- `calibration_assumptions.csv`
+- `calibration_verification_rules.csv`
+- `calibration_reconciliation.csv`
+- `calibration_d7_handoff.csv`
 - `summary.json`
 - `sez_calibration_demo_outputs.xlsx`
 
+The Excel workbook includes D6 review sheets for assumptions, scenario definitions, annual enterprise outputs, zone aggregation, portfolio summary, sensitivity, parameter ranges, verification rules, readiness triage, pathway rationale, validation flags, reconciliation, D7 handoff, summary metadata, reason codes, and limitations.
+
+## D6 Method
+
+See `docs/D6_MODEL_METHOD.md` for model formulas, input conventions, scenario definitions, revenue-neutral parameter search, unresolved policy choices, and D7 handoff logic.
+
 ## Limitations
 
-The default public/MVP demo uses hypothetical synthetic zones. Outputs are provisional screening outputs for human review. They do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
+The default public demo uses hypothetical synthetic zones. Outputs are provisional screening outputs for human review. They do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, legal counsel, or human review.
 
 Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis. Reported production or construction is not proof of incentive effectiveness. Additionality and net fiscal/economic impact require separate validation.
 

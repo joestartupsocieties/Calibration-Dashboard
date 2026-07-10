@@ -59,6 +59,22 @@ NUMERIC_FIELDS = [
     "boundary_wall_only_area_acres",
     "unsold_area_acres",
     "number_allottees",
+    "number_of_zone_enterprises",
+    "investment_actual_usd_m",
+    "employment_actual",
+    "exports_usd_m_2026",
+    "domestic_sales_usd_m_2026",
+    "capex_eligible_usd_m",
+    "rd_spend_usd_m",
+    "training_spend_usd_m",
+    "cit_foregone_pkr_m_2026",
+    "customs_exemption_pkr_m_cumulative",
+    "tax_paid_pkr_m_2026",
+    "public_infrastructure_cost_pkr_m",
+    "land_concession_pkr_m",
+    "estimated_net_fiscal_position_pkr_m",
+    "kpi_score",
+    "pilot_readiness_score",
 ]
 
 SYNONYMS = {
@@ -103,7 +119,8 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         df[field] = df[field].where(df[field] != "", placeholder)
 
     for field in NUMERIC_FIELDS:
-        df[field] = pd.to_numeric(df[field], errors="coerce")
+        if field in df.columns:
+            df[field] = pd.to_numeric(df[field], errors="coerce")
 
     df["zone_name"] = df["zone_name"].fillna("").astype(str).str.strip()
     df["province"] = df["province"].fillna("").astype(str).str.strip()

@@ -59,8 +59,13 @@ def test_scenario_settings_are_developer_gated_from_default_nav():
 
     default_pages_block = app_text.split("PAGES = [", 1)[1].split("]", 1)[0]
     assert '"Scenario Settings"' not in default_pages_block
-    assert '"Source-Data Confidence"' in default_pages_block
-    assert '"Work-Product Exports"' in default_pages_block
+    assert '"Calibration Analysis"' in default_pages_block
+    assert '"Readiness Triage"' in default_pages_block
+    assert '"Case Calibration"' in default_pages_block
+    assert '"Evidence & Exports"' in default_pages_block
+    assert '"About / Limitations"' in default_pages_block
+    assert '"Source-Data Confidence"' not in default_pages_block
+    assert '"Work-Product Exports"' not in default_pages_block
     assert '"Data Confidence"' not in default_pages_block
     assert '"Export"' not in default_pages_block
     assert "if SHOW_ADVANCED_SCENARIOS:" in app_text

@@ -3,4 +3,6 @@ __pycache__/
 .pytest_cache/
 .streamlit/secrets.toml
 outputs/*
+review_bundle*/
+deliverables/
 *.tmp

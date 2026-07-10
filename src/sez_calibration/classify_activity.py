@@ -83,9 +83,9 @@ def _classify(
     if "under construction" in status_text and "under production" not in status_text and "production" not in status_text:
         return "moving_toward_production", "Reported status is under construction, so the zone is treated as construction-stage rather than operating."
     if "under production" in status_text or "commercial production" in status_text:
-        return "operating_productive", "Reported status indicates production or commercial production."
+        return "reported_operating_activity", "Reported status indicates production or commercial production."
     if production > 0 or (prod_allotted is not None and prod_allotted >= 0.10):
-        return "operating_productive", "Reported production area or production share meets the screening threshold."
+        return "reported_operating_activity", "Reported production area or production share meets the screening threshold."
     if construction > 0 or (construction_allotted is not None and construction_allotted >= 0.10):
         return "moving_toward_production", "Construction area or construction share meets the transition threshold."
     if (

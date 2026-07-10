@@ -5,6 +5,8 @@ from typing import Any
 
 import pandas as pd
 
+from .calibration_model import MODEL_VERSION as CALIBRATION_MODEL_VERSION
+from .calibration_model import run_calibration_model
 from .classify_activity import classify_activity
 from .confidence import calculate_confidence_scores
 from .data_quality import run_data_quality_checks
@@ -23,6 +25,19 @@ REQUIRED_OUTPUTS = [
     "contradiction_log.csv",
     "data_confidence_scores.csv",
     "activity_classification.csv",
+    "calibration_enterprise_inputs.csv",
+    "calibration_scenario_definitions.csv",
+    "calibration_model_readiness.csv",
+    "calibration_excluded_records.csv",
+    "calibration_annual_enterprise.csv",
+    "calibration_zone_aggregation.csv",
+    "calibration_portfolio_summary.csv",
+    "calibration_sensitivity.csv",
+    "calibration_parameter_ranges.csv",
+    "calibration_assumptions.csv",
+    "calibration_verification_rules.csv",
+    "calibration_reconciliation.csv",
+    "calibration_d7_handoff.csv",
     "summary.json",
     "sez_calibration_demo_outputs.xlsx",
 ]
@@ -46,23 +61,31 @@ def run_pipeline(
     confidence = calculate_confidence_scores(zones, consistency_inputs)
     activity = classify_activity(zones)
     recommendations = run_recommendation_engine(zones, confidence, activity, legal, fiscal, issues, scenario)
+    calibration_frames = run_calibration_model(
+        root,
+        zones,
+        recommendations,
+        data_profile=str(ingest_metadata.get("data_profile", "synthetic")),
+        scenario=scenario,
+    )
     reason_codes = load_reason_codes(config_dir / "reason_codes_v0_5_lite.yaml")
     explanations = build_recommendation_explanations(recommendations, reason_codes)
     audit_flags = build_audit_flags(issues, contradictions, recommendations)
-    summary = build_summary(zones, issues, contradictions, confidence, activity, recommendations)
+    summary = build_summary(zones, issues, contradictions, confidence, activity, recommendations, calibration_frames)
     summary.update(ingest_metadata)
     summary.update(placeholder_metadata)
+    summary = _relativize_summary_paths(summary, root)
     if summary.get("data_profile") == "synthetic":
         summary["title"] = "SEZ Incentive Transition Triage"
         summary["dataset_scope_note"] = (
-            "Default public/MVP demo uses fully synthetic hypothetical-zone records. Real policy use requires "
+            "Default public demo uses fully synthetic hypothetical-zone records. Real policy use requires "
             "validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, "
             "KPI validation, and additionality/counterfactual analysis."
         )
         summary["detected_zone_profile_records_from_source_digest"] = int(len(zones))
         summary["normalized_indicator_records_from_source_digest"] = int(len(zones))
         summary["limitations"] = [
-            "Default public/MVP demo uses fully synthetic hypothetical-zone records.",
+            "Default public demo uses fully synthetic hypothetical-zone records.",
             "Outputs are provisional screening outputs for human review.",
             "Outputs do not approve incentives, set tax rates, determine fiscal cost, or replace BOI, FBR, Finance Division, SEZA, Law Division, IMF, programme, fiscal modeller, or legal counsel review.",
             "Real policy use requires validated BOI/SEZA source records, D4 legal review, D5/FBR fiscal verification, enterprise-level data, KPI validation, and additionality/counterfactual analysis.",
@@ -82,6 +105,7 @@ def run_pipeline(
         "explanations": explanations,
         "audit_flags": audit_flags,
     }
+    frames.update(calibration_frames)
 
     if write_outputs:
         write_csv(recommendations, output_dir / "zone_triage_prototype.csv")
@@ -92,6 +116,19 @@ def run_pipeline(
         write_csv(confidence, output_dir / "data_confidence_scores.csv")
         write_csv(activity, output_dir / "activity_classification.csv")
         write_csv(field_completeness, output_dir / "field_completeness.csv")
+        write_csv(frames["calibration_enterprise_inputs"], output_dir / "calibration_enterprise_inputs.csv")
+        write_csv(frames["calibration_scenario_definitions"], output_dir / "calibration_scenario_definitions.csv")
+        write_csv(frames["calibration_model_readiness"], output_dir / "calibration_model_readiness.csv")
+        write_csv(frames["calibration_excluded_records"], output_dir / "calibration_excluded_records.csv")
+        write_csv(frames["calibration_annual_enterprise"], output_dir / "calibration_annual_enterprise.csv")
+        write_csv(frames["calibration_zone_aggregation"], output_dir / "calibration_zone_aggregation.csv")
+        write_csv(frames["calibration_portfolio_summary"], output_dir / "calibration_portfolio_summary.csv")
+        write_csv(frames["calibration_sensitivity"], output_dir / "calibration_sensitivity.csv")
+        write_csv(frames["calibration_parameter_ranges"], output_dir / "calibration_parameter_ranges.csv")
+        write_csv(frames["calibration_assumptions"], output_dir / "calibration_assumptions.csv")
+        write_csv(frames["calibration_verification_rules"], output_dir / "calibration_verification_rules.csv")
+        write_csv(frames["calibration_reconciliation"], output_dir / "calibration_reconciliation.csv")
+        write_csv(frames["calibration_d7_handoff"], output_dir / "calibration_d7_handoff.csv")
         write_json(summary, output_dir / "summary.json")
         export_excel(output_dir / "sez_calibration_demo_outputs.xlsx", summary, frames, reason_codes)
 
@@ -129,9 +166,30 @@ def build_summary(
     confidence: pd.DataFrame,
     activity: pd.DataFrame,
     recommendations: pd.DataFrame,
+    calibration_frames: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, Any]:
+    calibration_frames = calibration_frames or {}
+    portfolio = calibration_frames.get("calibration_portfolio_summary", pd.DataFrame())
+    readiness = calibration_frames.get("calibration_model_readiness", pd.DataFrame())
+    annual = calibration_frames.get("calibration_annual_enterprise", pd.DataFrame())
+    parameter_ranges = calibration_frames.get("calibration_parameter_ranges", pd.DataFrame())
+    model_ready_count = 0
+    if not readiness.empty and "model_ready" in readiness.columns:
+        model_ready_count = int(readiness["model_ready"].astype(bool).sum())
+    calibration_status = "blocked"
+    if not annual.empty:
+        calibration_status = "calculated_for_gate_cleared_synthetic_enterprise_records"
+    elif not portfolio.empty and "calibration_status" in portfolio.columns:
+        calibration_status = str(portfolio["calibration_status"].iloc[0])
     return {
         "version": "v0.5-lite",
+        "fiscal_model_version": CALIBRATION_MODEL_VERSION,
+        "calibration_status": calibration_status,
+        "calibration_model_ready_enterprise_count": model_ready_count,
+        "calibration_enterprise_record_count": int(len(readiness)) if not readiness.empty else 0,
+        "calibration_annual_row_count": int(len(annual)),
+        "calibration_scenario_count": int(portfolio["scenario_id"].nunique()) if not portfolio.empty and "scenario_id" in portfolio.columns else 0,
+        "calibration_parameter_range_count": int(len(parameter_ranges)),
         "title": "SEZ Fiscal-Calibrated Triage & Incentive Screening Prototype",
         "zone_records_loaded": int(len(zones)),
         "detected_zone_profile_records_from_source_digest": 35,
@@ -166,19 +224,50 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
     summary_df = pd.DataFrame([{"metric": key, "value": _summary_value(value)} for key, value in summary.items()])
     reason_df = pd.DataFrame([{"reason_code": key, "reason_text": value} for key, value in reason_codes.items()])
     limitations_df = pd.DataFrame({"limitation": summary.get("limitations", [])})
+    read_me = pd.DataFrame(
+        [
+            {
+                "item": "Workbook purpose",
+                "detail": "Synthetic D6 calibration-analysis review package for workflow demonstration only.",
+            },
+            {
+                "item": "Decision status",
+                "detail": "Does not approve incentives, set tax rates, determine final fiscal cost, or replace D4/D5/human review.",
+            },
+            {
+                "item": "Model version",
+                "detail": summary.get("fiscal_model_version", CALIBRATION_MODEL_VERSION),
+            },
+            {
+                "item": "Dataset basis",
+                "detail": "Structured screening dataset; current demo is synthetic and not the final reconciled 44/54-zone universe.",
+            },
+        ]
+    )
 
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
-        summary_df.to_excel(writer, sheet_name="00_summary", index=False)
-        frames["recommendations"].to_excel(writer, sheet_name="01_zone_triage", index=False)
-        frames["explanations"].to_excel(writer, sheet_name="02_recommendation_explanations", index=False)
-        frames["issues"].to_excel(writer, sheet_name="03_data_quality_issues", index=False)
-        frames["contradictions"].to_excel(writer, sheet_name="04_contradictions", index=False)
-        frames["confidence"].to_excel(writer, sheet_name="05_data_confidence", index=False)
-        frames["activity"].to_excel(writer, sheet_name="06_activity_classification", index=False)
-        reason_df.to_excel(writer, sheet_name="07_reason_codes", index=False)
-        frames["legal"].to_excel(writer, sheet_name="08_legal_placeholders", index=False)
-        frames["fiscal"].to_excel(writer, sheet_name="09_fiscal_placeholders", index=False)
-        limitations_df.to_excel(writer, sheet_name="10_limitations", index=False)
+        read_me.to_excel(writer, sheet_name="00_read_me", index=False)
+        frames.get("calibration_enterprise_inputs", pd.DataFrame()).to_excel(writer, sheet_name="01_raw_enterprise_inputs", index=False)
+        frames.get("calibration_assumptions", pd.DataFrame()).to_excel(writer, sheet_name="02_model_assumptions", index=False)
+        frames.get("calibration_scenario_definitions", pd.DataFrame()).to_excel(writer, sheet_name="03_scenario_definitions", index=False)
+        frames.get("calibration_annual_enterprise", pd.DataFrame()).to_excel(writer, sheet_name="04_annual_enterprise", index=False)
+        frames.get("calibration_zone_aggregation", pd.DataFrame()).to_excel(writer, sheet_name="05_zone_aggregation", index=False)
+        frames.get("calibration_portfolio_summary", pd.DataFrame()).to_excel(writer, sheet_name="06_portfolio_summary", index=False)
+        frames.get("calibration_sensitivity", pd.DataFrame()).to_excel(writer, sheet_name="07_sensitivity", index=False)
+        frames.get("calibration_parameter_ranges", pd.DataFrame()).to_excel(writer, sheet_name="08_parameter_ranges", index=False)
+        frames.get("calibration_verification_rules", pd.DataFrame()).to_excel(writer, sheet_name="09_verification_rules", index=False)
+        frames["recommendations"].to_excel(writer, sheet_name="10_readiness_triage", index=False)
+        frames["explanations"].to_excel(writer, sheet_name="11_pathway_rationale", index=False)
+        frames["audit_flags"].to_excel(writer, sheet_name="12_validation_flags", index=False)
+        frames.get("calibration_reconciliation", pd.DataFrame()).to_excel(writer, sheet_name="13_reconciliation", index=False)
+        frames.get("calibration_d7_handoff", pd.DataFrame()).to_excel(writer, sheet_name="14_d7_handoff", index=False)
+        summary_df.to_excel(writer, sheet_name="15_summary_metadata", index=False)
+        reason_df.to_excel(writer, sheet_name="16_reason_codes", index=False)
+        frames["issues"].to_excel(writer, sheet_name="17_source_flags", index=False)
+        frames["contradictions"].to_excel(writer, sheet_name="18_consistency_flags", index=False)
+        frames["confidence"].to_excel(writer, sheet_name="19_record_quality", index=False)
+        frames["activity"].to_excel(writer, sheet_name="20_activity_classification", index=False)
+        limitations_df.to_excel(writer, sheet_name="21_limitations", index=False)
 
         workbook = writer.book
         for worksheet in workbook.worksheets:
@@ -195,3 +284,16 @@ def _summary_value(value: Any) -> str:
     if isinstance(value, (dict, list)):
         return str(value)
     return str(value)
+
+
+def _relativize_summary_paths(summary: dict[str, Any], root: Path) -> dict[str, Any]:
+    out = dict(summary)
+    for key in ["data_profile_dir", "input_file", "placeholder_file"]:
+        value = out.get(key)
+        if not value:
+            continue
+        try:
+            out[key] = str(Path(str(value)).resolve().relative_to(root.resolve())).replace("\\", "/")
+        except (OSError, ValueError):
+            out[key] = Path(str(value)).name
+    return out

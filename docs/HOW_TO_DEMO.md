@@ -1,21 +1,17 @@
 # How To Demo
 
-This is a v0.5-lite demo. It does not make final legal, fiscal, or incentive decisions, does not calculate final tax rates, and does not run a full calibration optimizer.
+This is a synthetic D6 calibration-analysis demo. It does not make final legal, fiscal, tax, or incentive decisions, does not calculate final tax rates, and does not replace BOI, FBR, Finance Division, SEZA, legal, IMF, programme, fiscal-modelling, or human review.
 
-## Three-Minute Script
+## Three-To-Five Minute Script
 
 1. Start the app with `streamlit run app.py`.
-2. Open Home and show the provisional-use warning.
-3. Point out that the current public demo uses 14 fully synthetic hypothetical-zone records, not Pakistan's full SEZ/EPZ universe.
-4. Open Source-Data Confidence and show validation flags, source-scope limits, field completeness, and confidence distribution.
-5. Open Zone Explorer and select one zone to show raw normalized fields and source lineage.
-6. Open Legal / Fiscal Placeholder Gates and show that D4/D5 fields are demo placeholders.
-7. Open Recommendation Engine and show the provisional treatment.
-8. Confirm any support-related output is subject to D4 legal review and D5 fiscal verification.
-9. Confirm any cost-based support language means temporary transition support only and all SEZ fiscal incentives phase out by 30 June 2035.
-10. Decode the reason codes and hard gates for the selected zone.
-11. Open Work-Product Exports and download the Excel workbook or supporting structured CSV outputs.
+2. Start on **Calibration Analysis**. Explain that the page compares status quo, accelerated removal, cost-based regime, combined transition/pilot, and no-SEZ-specific-incentive reference states for 2026-2035.
+3. Show the metric cards, scenario selector, annual results, deduction/carryforward trace, and revenue-neutral parameter ranges. Emphasize that these are synthetic workflow outputs.
+4. Open **Readiness Triage**. Explain that zones must pass data, legal, fiscal, compliance, additionality, and human-review gates before calibration outputs should be used.
+5. Open **Case Calibration**. Select a gate-cleared case, then a blocked case. For blocked cases, point out that no instrument, rate, cap, or sunset is classified until validation gates clear.
+6. Open **Evidence & Exports**. Show source-data confidence, model readiness, reconciliation checks, verification rules, and the Excel/CSV outputs.
+7. Open **About / Limitations**. Close with the guardrails: synthetic demo view, D4 legal review, D5/FBR validation, human review, no final decision, and no pilot zone selected by the model.
 
 ## Presenter Notes
 
-The key message is not that the model makes final decisions. The demo shows a reproducible logic chain that keeps uncertainty visible and routes zones to the right next review step.
+The key message is not that the model already knows the answer. The demo shows how a D6 calibration layer can connect enterprise evidence, fiscal-cost assumptions, legal/fiscal gates, additionality uncertainty, revenue-neutral parameter ranges, and D7 pilot handoff requirements in one explainable workflow.

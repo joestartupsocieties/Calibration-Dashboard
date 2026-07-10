@@ -1,0 +1,15 @@
+enterprise_id,zone_id,aggregation_weight,cohort_scope,maturity_category,pilot_cohort_flag,weight_provenance,notes
+ENT-001-A,SYN-001,4.0,SEZ,operational_mature,true,Synthetic stratified-sample weight,High-readiness SEZ enterprise archetype.
+ENT-002-A,SYN-002,2.0,SEZ,operational_mature,true,Synthetic stratified-sample weight,Medium-scale operating enterprise archetype.
+ENT-003-A,SYN-003,2.5,SEZ,operational_but_additionality_open,false,Synthetic stratified-sample weight,Operating activity with additionality evidence gap.
+ENT-004-A,SYN-004,1.5,SEZ,legal_transition_review,false,Synthetic stratified-sample weight,Legal hard-gate case.
+ENT-005-A,SYN-005,1.5,SEZ,fiscal_exposure_review,false,Synthetic stratified-sample weight,High fiscal exposure and low additionality case.
+ENT-006-A,SYN-006,1.2,SEZ,construction_transition,false,Synthetic stratified-sample weight,Construction-stage transition case.
+ENT-007-A,SYN-007,1.0,SEZ,construction_utility_constraint,false,Synthetic stratified-sample weight,Infrastructure/utility constraint case.
+ENT-008-A,SYN-008,0.8,SEZ,allotment_only,false,Synthetic stratified-sample weight,Idle allotment case.
+ENT-009-A,SYN-009,0.8,SEZ,vacant_or_speculative,false,Synthetic stratified-sample weight,Vacant land case.
+ENT-010-A,SYN-010,1.0,SEZ,non_compliant,false,Synthetic stratified-sample weight,Compliance hard-gate case.
+ENT-011-A,SYN-011,0.5,SEZ,missing_data,false,Synthetic stratified-sample weight,Low source-data confidence case.
+ENT-012-A,SYN-012,1.3,SEZ,fiscal_verification_required,false,Synthetic stratified-sample weight,FBR/D5 fiscal verification hard-gate case.
+ENT-013-A,SYN-013,0.0,EPZ,excluded_epz,false,Synthetic stratified-sample weight,EPZ record excluded from default SEZ calibration slice.
+ENT-014-A,SYN-014,0.7,SEZ,greenfield_not_ready,false,Synthetic stratified-sample weight,Greenfield case not ready for enterprise calibration.

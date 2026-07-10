@@ -1,14 +1,47 @@
-field_name,description
-zone_id,Synthetic stable zone ID for demo joins.
-zone_name,Fictional/hypothetical zone name. No real SEZ name.
-legal_risk_level,Low/medium/high/unknown D4 legal/contract risk classification.
-developer_compliance_status,Synthetic developer compliance status used by current engine.
-enterprise_compliance_status,Synthetic enterprise compliance status used by current engine.
-fiscal_exposure_level,Low/medium/high/unknown D5/FBR fiscal exposure band.
-fiscal_data_status,Missing/preliminary/validated/verified status for D5 fiscal file.
-additionality_confidence,Synthetic assessment of whether SEZ treatment plausibly caused activity.
-counterfactual_status,Whether comparator/baseline has been assessed.
-incentive_effectiveness_confidence,Whether activity appears to be linked to incentive regime.
-net_fiscal_economic_impact,Synthetic net fiscal/economic impact assessment.
-pilot_readiness_score,"Synthetic composite for D7 pilot-readiness discussion, not used directly by current engine."
-demo_expected_pathway,Expected demo route. Useful for UI/case selection but not relied on as model output.
+field_name,definition,unit,currency,period,annual_cumulative_stock_status,source_level,missingness_rule,model_use
+zone_id,Synthetic stable zone ID for demo joins.,identifier,,current,record identifier,zone,Required for joins; missing blocks record use.,Join key across screening and D6 tables.
+zone_name,Fictional/hypothetical zone name. No real SEZ name.,text,,current,descriptor,zone,Required for user-facing display; missing replaced with synthetic label.,Display and grouping.
+province,Synthetic province label.,text,,current,descriptor,zone,Missing allowed but flagged for review.,Portfolio filtering and display.
+developer_name,Synthetic developer name.,text,,current,descriptor,zone,Missing allowed but flagged for legal/compliance review.,Case memo context.
+developer_mode,Synthetic developer mode.,text,,current,descriptor,zone,Missing allowed but flagged for review.,Readiness triage context.
+zone_type,Synthetic SEZ/EPZ/type descriptor.,text,,current,descriptor,zone,Missing allowed but flagged; EPZ scope can be excluded from default SEZ slice.,Cohort scope and D7 handoff context.
+operational_status,Reported operational status in the structured screening dataset.,status,,2026,status,zone,Missing treated as not yet validated.,Activity classification.
+industrial_area_acres,Industrial land area.,acres,,2026,stock,zone,Missing lowers source-data confidence.,Validation and activity shares.
+allotted_area_acres,Reported allotted industrial area.,acres,,2026,stock,zone,Missing lowers source-data confidence.,Colonization/activity shares.
+vacant_area_acres,Reported vacant or idle area.,acres,,2026,stock,zone,Missing allowed but affects activity confidence.,Idle/vacancy screen.
+under_construction_area_acres,Reported construction-stage area.,acres,,2026,stock,zone,Missing treated as no evidence unless status says construction.,Construction-stage transition screen.
+under_production_area_acres,Reported production-stage area.,acres,,2026,stock,zone,Missing treated as no production evidence unless status says production.,Reported operating activity screen.
+boundary_wall_only_area_acres,Area with boundary-wall-only evidence.,acres,,2026,stock,zone,Missing treated as not available.,Weak activity-evidence flag.
+unsold_area_acres,Reported unsold area.,acres,,2026,stock,zone,Missing treated as not available.,Idle/land-use review flag.
+number_allottees,Reported number of allottees.,count,,2026,stock,zone,Missing lowers source-data confidence.,Context and validation.
+number_of_zone_enterprises,Reported enterprise count.,count,,2026,stock,zone,Missing lowers enterprise-evidence confidence.,Context and D6 sample reconciliation.
+investment_actual_usd_m,Synthetic reported investment actual.,million,USD,2026,cumulative/stock,zone or enterprise,Missing blocks investment-based calibration use.,Control total and context; converted to PKR for reconciliation.
+employment_actual,Synthetic reported employment.,count,,2026,stock,enterprise,Missing requires KPI validation.,KPI assurance and pilot-readiness context.
+exports_usd_m_2026,Synthetic reported exports in 2026.,million,USD,2026,annual,enterprise,Missing allowed but requires FBR/customs validation before calibration use.,KPI context; not direct incentive trigger.
+domestic_sales_usd_m_2026,Synthetic reported domestic sales in 2026.,million,USD,2026,annual,enterprise,Missing allowed but requires tax-return validation.,KPI context.
+capex_eligible_usd_m,Synthetic potentially qualifying CAPEX base.,million,USD,2026,annual/claim base,enterprise,Missing blocks CAPEX deduction modelling for that enterprise.,Converted to PKR; cost-based CAPEX deduction input.
+rd_spend_usd_m,Synthetic R&D expenditure base.,million,USD,2026,annual/claim base,enterprise,Missing treated as zero for R&D modelling.,Converted to PKR; R&D deduction input.
+training_spend_usd_m,Synthetic training expenditure base.,million,USD,2026,annual/claim base,enterprise,Missing treated as zero for training modelling.,Converted to PKR; training deduction input.
+cit_foregone_pkr_m_2026,Synthetic CIT foregone under current treatment.,million,PKR,2026,annual,enterprise or zone,Missing blocks benchmark-tax calculation unless tax-paid data exists.,Revenue-foregone baseline and assessed-income proxy.
+customs_exemption_pkr_m_cumulative,Synthetic cumulative customs exemptions.,million,PKR,through 2026,cumulative,enterprise or zone,Missing treated as zero; cumulative values are annualized by explicit schedule only.,Customs fiscal-cost schedule; not added to annual CIT.
+tax_paid_pkr_m_2026,Synthetic tax paid in 2026.,million,PKR,2026,annual,enterprise or zone,Missing allowed if CIT foregone exists; missing both blocks benchmark-tax calculation.,Benchmark tax proxy with CIT foregone.
+public_infrastructure_cost_pkr_m,Synthetic public infrastructure cost allocation.,million,PKR,current/cumulative,cumulative,zone,Missing treated as zero in thin-slice model until D5 data arrives.,Indirect fiscal-cost allocation.
+land_concession_pkr_m,Synthetic land concession value.,million,PKR,current/cumulative,cumulative,zone,Missing treated as zero in thin-slice model until D5 data arrives.,Indirect fiscal-cost allocation.
+estimated_net_fiscal_position_pkr_m,Synthetic high-level net fiscal position note.,million,PKR,2026,annual/estimate,zone,Not used as final truth; missing allowed.,Display/control only; D6 recalculates from enterprise inputs.
+kpi_score,Synthetic KPI confidence score.,score 0-100,,2026,score,zone,Missing treated as not assessed.,KPI assurance context.
+pilot_readiness_score,Synthetic pilot-readiness discussion score.,score 0-100,,2026,score,zone,Missing allowed; not a direct decision trigger.,D7 discussion context only.
+legal_risk_level,Synthetic D4 legal/contract risk classification.,category,,current,status,zone,Unknown blocks or routes to D4 review.,Legal readiness gate.
+developer_compliance_status,Synthetic developer compliance status.,category,,current,status,zone,Unknown can block depending on posture; non-compliant blocks support review.,Compliance gate.
+enterprise_compliance_status,Synthetic enterprise compliance status.,category,,current,status,zone/enterprise,Unknown or partial blocks D6 model-readiness until validated.,Compliance gate.
+fiscal_exposure_level,Synthetic fiscal exposure band.,category,,current,status,zone,Unknown/high routes to D5/FBR validation.,Fiscal gate and pathway.
+fiscal_data_status,Synthetic D5/FBR data status.,category,,current,status,zone,Missing/preliminary blocks full calibration use; validated/verified required for D6 calculations.,Fiscal readiness gate.
+additionality_confidence,Synthetic assessment of whether SEZ treatment plausibly caused activity.,category,,current,status,zone/enterprise,Unknown/low prevents strong cost-based support language.,Additionality gate and scenario interpretation.
+counterfactual_status,Whether comparator/baseline has been assessed.,category,,current,status,zone/enterprise,Not assessed adds counterfactual gate.,Counterfactual gate.
+incentive_effectiveness_confidence,Whether activity appears linked to incentive regime.,category,,current,status,zone/enterprise,Unknown/weak prevents incentive-effectiveness inference.,Effectiveness gate.
+net_fiscal_economic_impact,Synthetic net fiscal/economic impact assessment.,category,,current,status,zone/enterprise,Unknown adds D5/D6 validation gate.,Net-impact caveat.
+displacement_risk,Synthetic displacement/relocation risk band.,category,,current,status,zone/enterprise,Unknown requires validation before pilot use.,Additionality/counterfactual caveat.
+fiscal_return_confidence,Synthetic fiscal-return confidence band.,category,,current,status,zone/enterprise,Unknown/weak prevents strong cost-based treatment.,Fiscal return caveat.
+aggregation_weight,Synthetic stratified-sample expansion weight.,multiplier,,current,weight,enterprise,Missing defaults to 1.0; EPZ comparator can be zero-weighted.,Portfolio aggregation.
+cohort_scope,Synthetic cohort scope such as SEZ or EPZ.,category,,current,status,enterprise,Missing defaults to SEZ; EPZ excluded from default D6 SEZ slice.,Cohort exclusion and aggregation.
+pilot_cohort_flag,Synthetic flag for whether an enterprise is in the illustrative pilot cohort.,boolean,,current,status,enterprise,Missing defaults false.,Combined transition/pilot scenario.
+model_ready,Derived readiness flag requiring legal, fiscal, compliance, scope, and benchmark-tax checks.,boolean,,current,derived,enterprise,False blocks D6 numeric use for that enterprise.,D6 inclusion gate.

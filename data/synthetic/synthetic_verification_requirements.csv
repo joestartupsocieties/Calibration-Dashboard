@@ -1,0 +1,14 @@
+instrument,requirement,owner,burden_score,source
+CAPEX,audited fixed-asset register,FBR / enterprise auditor,2,Concept note Sections 7.3 and 8.3
+CAPEX,invoice and payment evidence,FBR / enterprise auditor,2,Concept note Sections 7.3 and 8.3
+CAPEX,in-zone use and commissioning date,BOI / SEZA / enterprise,2,Concept note Sections 7.3 and 8.3
+CAPEX,related-party and relocation check,FBR / BOI / SEZA,3,Concept note Sections 7.3 and 8.3
+CAPEX,FBR/customs cross-check,FBR / Customs,3,Concept note Sections 7.3 and 8.3
+R&D,separate audited project ledger,FBR / enterprise auditor,3,Concept note Sections 7.3 and 9.3
+R&D,technical project description,BOI / technical reviewer,2,Concept note Sections 7.3 and 9.3
+R&D,payroll/vendor evidence,FBR / enterprise auditor,2,Concept note Sections 7.3 and 9.3
+R&D,SEZ attribution and anti-relabelling check,BOI / SEZA / FBR,3,Concept note Sections 7.3 and 9.3
+Training,approved provider/program,BOI / SEZA,2,Concept note Sections 8.3 and 9.3
+Training,invoice/payment evidence,FBR / enterprise auditor,2,Concept note Sections 8.3 and 9.3
+Training,participant roster and attendance,enterprise / BOI / SEZA,2,Concept note Sections 8.3 and 9.3
+Training,payroll linkage and SEZ attribution,FBR / enterprise,3,Concept note Sections 8.3 and 9.3

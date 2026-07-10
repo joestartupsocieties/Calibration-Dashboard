@@ -26,11 +26,14 @@ def main() -> None:
     print(f"Validation flags: {summary['data_quality_issue_count']}")
     print(f"Cross-source/status conflicts: {summary['contradiction_count']}")
     print(f"Recommendation records: {summary['recommendation_count']}")
+    print(f"D6 model version: {summary.get('fiscal_model_version', 'not available')}")
+    print(f"D6 calibration status: {summary.get('calibration_status', 'not available')}")
+    print(f"D6 gate-cleared enterprise records: {summary.get('calibration_model_ready_enterprise_count', 0)}")
     print("Confidence bands:")
     for band in ["high", "medium", "low", "do_not_use"]:
         print(f"  {band}: {confidence_counts.get(band, 0)}")
     print("Activity categories:")
-    for category in ["operating_productive", "moving_toward_production", "allotted_but_inactive", "vacant_or_speculative", "unclear"]:
+    for category in ["reported_operating_activity", "moving_toward_production", "allotted_but_inactive", "vacant_or_speculative", "unclear"]:
         print(f"  {category}: {activity_counts.get(category, 0)}")
     print("Core outputs:")
     for name in [
@@ -38,6 +41,9 @@ def main() -> None:
         "contradiction_log.csv",
         "data_confidence_scores.csv",
         "activity_classification.csv",
+        "calibration_portfolio_summary.csv",
+        "calibration_parameter_ranges.csv",
+        "calibration_d7_handoff.csv",
     ]:
         print(f"  {output_dir / name}")
 

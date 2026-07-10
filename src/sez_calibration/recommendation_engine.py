@@ -290,7 +290,7 @@ def generate_reason_codes(record: pd.Series | dict[str, Any], gates: list[dict[s
         codes.extend(str(code) for code in gate.get("codes", []))
 
     activity = _normalized_activity(record)
-    if activity == "operating_productive":
+    if activity == "reported_operating_activity":
         codes.append("R04")
     elif activity == "moving_toward_production":
         codes.append("R05")
@@ -308,7 +308,7 @@ def generate_reason_codes(record: pd.Series | dict[str, Any], gates: list[dict[s
         codes.append("R22")
     if _legal_or_fiscal_unresolved(gates):
         codes.extend(["R14", "R13"])
-    if activity == "operating_productive" and not _has_blocking_gate(gates):
+    if activity == "reported_operating_activity" and not _has_blocking_gate(gates):
         codes.append("R15")
     codes.append("R17")
     return _unique(codes)
@@ -344,7 +344,7 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         if additionality in {"Unknown", "Low"} or fiscal_exposure == "high":
             if activity == "vacant_or_speculative":
                 return PROVISIONAL_TREATMENTS["phase_out"]
-            if activity in {"operating_productive", "moving_toward_production", "allotted_but_inactive", "unclear"}:
+            if activity in {"reported_operating_activity", "moving_toward_production", "allotted_but_inactive", "unclear"}:
                 return PROVISIONAL_TREATMENTS["non_fiscal"]
     if activity == "vacant_or_speculative":
         return PROVISIONAL_TREATMENTS["phase_out"]
@@ -352,7 +352,7 @@ def generate_provisional_treatment(record: pd.Series | dict[str, Any], gates: li
         return PROVISIONAL_TREATMENTS["non_fiscal"]
     if activity == "moving_toward_production":
         return PROVISIONAL_TREATMENTS["transition"]
-    if activity == "operating_productive":
+    if activity == "reported_operating_activity":
         if _support_ready(record, gates, score):
             return PROVISIONAL_TREATMENTS["limited_cost"]
         return PROVISIONAL_TREATMENTS["pilot"]
@@ -535,7 +535,7 @@ def infer_incentive_effectiveness_confidence(record: pd.Series | dict[str, Any])
     activity = _normalized_activity(record)
     if activity in {"vacant_or_speculative", "allotted_but_inactive"}:
         return "Weak"
-    if activity == "operating_productive" and _record_text(record, "data_confidence_band") == "high":
+    if activity == "reported_operating_activity" and _record_text(record, "data_confidence_band") == "high":
         return "Moderate"
     return "Unknown"
 
@@ -632,7 +632,7 @@ def generate_illustrative_instruments(
         return [INSTRUMENT_OPTIONS["tbd"]]
     if support_treatment == SUPPORT_TREATMENTS["limited_cost"] and not _legal_or_fiscal_unresolved(gates):
         return [INSTRUMENT_OPTIONS["capex"]]
-    if activity == "operating_productive" and support_treatment == SUPPORT_TREATMENTS["pilot"]:
+    if activity == "reported_operating_activity" and support_treatment == SUPPORT_TREATMENTS["pilot"]:
         return [INSTRUMENT_OPTIONS["tbd"]]
     return [INSTRUMENT_OPTIONS["facilitation"]]
 
@@ -715,7 +715,7 @@ def generate_conditions_gates(record: pd.Series | dict[str, Any], gates: list[di
             "Human review required.",
         ]
     )
-    if _normalized_activity(record) == "operating_productive":
+    if _normalized_activity(record) == "reported_operating_activity":
         conditions.append("Reported production requires source-row and enterprise-level verification.")
     return _unique(conditions)
 
@@ -761,7 +761,7 @@ def generate_why(
     activity = _normalized_activity(record)
     confidence = _record_text(record, "data_confidence_band").replace("_", " ") or "not yet validated"
     activity_text = {
-        "operating_productive": "reported data shows production activity",
+        "reported_operating_activity": "reported data shows production activity",
         "moving_toward_production": "reported data shows construction-stage movement, not operating production",
         "allotted_but_inactive": "reported data shows allotment movement without productive-use evidence",
         "vacant_or_speculative": "reported data shows high vacant or idle land signals",
@@ -823,7 +823,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
 
     strict_confidence_for_all = to_bool(scenario.get("strict_data_confidence_for_all"))
     if _band_rank(band) < _band_rank(minimum_band) and (
-        strict_confidence_for_all or activity in {"operating_productive", "moving_toward_production"}
+        strict_confidence_for_all or activity in {"reported_operating_activity", "moving_toward_production"}
     ):
         gates.append(
             _gate(
@@ -834,7 +834,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
             )
         )
     if to_bool(scenario.get("require_legal_low_risk_for_pilot")) and legal_risk != "low" and activity in {
-        "operating_productive",
+        "reported_operating_activity",
         "moving_toward_production",
     }:
         gates.append(
@@ -881,7 +881,7 @@ def _scenario_gates(record: pd.Series | dict[str, Any], scenario: dict[str, Any]
 
 def _support_ready(record: pd.Series | dict[str, Any], gates: list[dict[str, object]], score: float) -> bool:
     return (
-        _normalized_activity(record) == "operating_productive"
+        _normalized_activity(record) == "reported_operating_activity"
         and score >= 0.8
         and _record_text(record, "legal_risk_level") in {"low", "medium"}
         and _record_text(record, "fiscal_exposure_level") not in {"", "unknown", "missing", "high"}
@@ -943,6 +943,8 @@ def _normalized_activity(record: pd.Series | dict[str, Any]) -> str:
     status = _record_text(record, "operational_status")
     if "under construction" in status and "under production" not in status and "production" not in status:
         return "moving_toward_production"
+    if activity == "operating_productive":
+        return "reported_operating_activity"
     return activity
 
 
