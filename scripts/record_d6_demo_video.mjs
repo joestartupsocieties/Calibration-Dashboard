@@ -125,7 +125,7 @@ async function waitForServer(url, timeoutMs) {
 
 async function stableRender(page) {
   await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1250);
+  await page.waitForTimeout(3500);
 }
 
 async function clickNav(page, label) {

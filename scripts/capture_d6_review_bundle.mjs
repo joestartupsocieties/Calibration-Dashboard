@@ -42,7 +42,8 @@ try {
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await stableRender(page);
-  await assertPage(page, "One-Decision Calibration View", ["SEZ D6 Calibration Workbench", "Synthetic demo view", "D5 fiscal ceiling"]);
+  await assertPage(page, "One-Decision Calibration View", ["SEZ D6 Calibration Workbench", "Synthetic demo view", "Current joint configuration"]);
+  await warmLazyElements(page);
   await page.screenshot({ path: path.join(screenshotDir, "01_calibration_analysis_default.png"), fullPage: true });
   qaRows.push("01_calibration_analysis_default.png - title, metric cards, scenario comparison, annual results.");
 
@@ -106,7 +107,7 @@ async function waitForServer(url, timeoutMs) {
 
 async function stableRender(page) {
   await page.waitForLoadState("networkidle");
-  await page.waitForTimeout(1250);
+  await page.waitForTimeout(3500);
 }
 
 async function clickNav(page, label) {
@@ -120,12 +121,19 @@ async function openExpander(page, label) {
   await stableRender(page);
 }
 
+async function warmLazyElements(page) {
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(1000);
+  await page.keyboard.press("Home");
+  await page.waitForTimeout(1000);
+}
+
 async function assertPage(page, heading, requiredText) {
   const expected = [heading, ...requiredText];
   await page.waitForFunction(
     (texts) => {
       const body = document.body?.innerText?.toLowerCase() || "";
-      return texts.some((text) => body.includes(String(text).toLowerCase()));
+      return texts.every((text) => body.includes(String(text).toLowerCase()));
     },
     expected,
     { timeout: 30_000 },

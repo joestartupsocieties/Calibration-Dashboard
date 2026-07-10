@@ -6,11 +6,11 @@ This repository is scoped to a demoable Pakistan SEZ D6 calibration MVP. It uses
 
 ## Demo Flow
 
-`synthetic enterprise archetype -> model-readiness status -> D5 fiscal envelope -> instrument package -> rate/cap/threshold controls -> feasible parameter frontier -> additionality sensitivity -> verification requirements -> D7 recalibration triggers -> export`
+`synthetic enterprise archetype -> model-readiness status -> D5 fiscal envelope -> joint package/rate/cap/threshold/utilization/uptake controls -> current envelope decision -> nearest feasible tested configuration -> additionality sensitivity -> verification requirements -> D7 recalibration triggers -> export`
 
 The controlled decision question is:
 
-> For one synthetic enterprise archetype or portfolio slice, what temporary cost-based incentive parameter combinations could be tested within an explicit illustrative fiscal envelope under low/base/high additionality assumptions, and what evidence, verification conditions, and D7 recalibration rules must be satisfied before proceeding?
+> Is the currently selected temporary cost-based incentive configuration within the illustrative D5 fiscal envelope, and if not, what is the nearest feasible tested joint configuration? What evidence, verification conditions, and D7 recalibration rules must be satisfied before proceeding?
 
 ## How To Run
 
@@ -30,7 +30,9 @@ The app opens to **Calibration Analysis** in **Synthetic demo view**.
 - Made additionality scenario-relative: the no-SEZ reference receives no incentive-caused incremental income.
 - Added threshold semantics: `qualifying_expenditure_threshold_pkr_m` is a minimum annual claim threshold.
 - Added transparent fiscal identities: benchmark tax liability, tax collected, tax expenditure, cash net revenue, and fiscal impact versus reference.
-- Replaced the old ceiling-search language with a feasible parameter frontier against an illustrative D5 fiscal envelope.
+- Replaced the old ceiling-search language with a tested joint-configuration frontier against an illustrative D5 fiscal envelope.
+- Made incentive-caused incremental income conditional on a positive available incentive after package, rate, threshold, cap, and utilization settings.
+- Scaled frontier fiscal cost, incremental income, administrative cost, workload, and annual FTE consistently by pilot uptake.
 - Added administrative workload and cost calculations from claim count, review hours, audit sample rate, and cost per review hour.
 - Added operational D7 recalibration triggers.
 
@@ -63,15 +65,15 @@ The pipeline writes CSV/JSON/XLSX outputs to `outputs/`, including:
 - `calibration_d7_handoff.csv`
 - `sez_calibration_demo_outputs.xlsx`
 
-The Excel workbook includes assumptions, scenario definitions, annual enterprise outputs, portfolio summary, feasible frontier, sensitivity, verification rules, readiness triage, reconciliation, validation flags, D7 handoff, reason codes, and limitations.
+The Excel workbook includes assumptions, scenario definitions, annual enterprise outputs, portfolio summary, tested joint-configuration frontier, sensitivity, verification rules, readiness triage, reconciliation, validation flags, D7 handoff, reason codes, and limitations.
 
 ## Demo Script
 
 1. Open **Calibration Analysis** and state the decision question.
 2. Select the instrument package and show the illustrative D5 fiscal ceiling.
 3. Adjust CAPEX rate, annual cap, threshold, utilization, or pilot uptake.
-4. Show when the tested fiscal cost is inside or outside the envelope.
-5. Open the feasible parameter frontier and point to the binding constraint.
+4. Show whether the current joint configuration is inside or outside the envelope.
+5. Point to the nearest feasible tested joint configuration and then open the frontier table.
 6. Show low/base/high additionality sensitivity.
 7. Open verification requirements and D7 recalibration triggers.
 8. Use **Case Calibration** and **Evidence & Exports** only as supporting evidence pages.

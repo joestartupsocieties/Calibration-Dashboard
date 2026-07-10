@@ -9,6 +9,7 @@ The final pass adds regression tests and numeric validation for the D6 calibrati
 - Combined pilot output at 0%, intermediate, and 100% uptake interpolates consistently.
 - The combined pilot is not automatically identical to the full cost-based regime.
 - The no-SEZ reference receives no incentive-caused additionality.
+- Cost-based incremental income is zero when the selected package, rate, threshold, cap, or utilization setting generates no available deduction.
 
 ## Parameter Behavior
 
@@ -17,8 +18,9 @@ The final pass adds regression tests and numeric validation for the D6 calibrati
 - Instrument-package changes affect relevant archetypes.
 - Qualifying threshold changes the claim base by blocking claims below the threshold.
 - Utilization changes deduction use.
+- Incremental assessed income responds to incentive intensity and does not create a free benefit when cost-based support is unavailable.
 - Discount rate changes NPV while annual undiscounted cash flows remain formula-driven.
-- Binding constraints are reported as threshold, annual cap, utilization, tax capacity/carryforward, fiscal envelope, or non-binding within the tested range.
+- Binding constraints are reported as threshold, annual cap, utilization, tax capacity/carryforward, fiscal envelope, no pilot uptake/no available incentive, or non-binding within the tested grid.
 
 ## Fiscal Arithmetic
 
@@ -29,18 +31,19 @@ The final pass adds regression tests and numeric validation for the D6 calibrati
 - Carryforward balances remain non-negative and reconcile through FIFO use/expiry.
 - Weighted portfolio totals reconcile to enterprise-year values.
 
-## Frontier Behavior
+## Tested Joint-Configuration Frontier
 
-- The synthetic D5 envelope produces both feasible and infeasible parameter combinations.
-- The default frontier reports tested fiscal cost, envelope margin, feasible flag, binding constraint, incremental assessed income, and administrative workload.
-- Non-binding ranges are labelled as non-binding within the tested range instead of as calibrated maxima.
+- The synthetic D5 envelope produces both feasible and infeasible joint configurations.
+- The default frontier reports tested fiscal cost, envelope margin, feasible flag, binding constraint, incremental assessed income, administrative workload, and annual FTE.
+- Tested fiscal cost, incremental income, admin cost, workload, and annual FTE are all scaled consistently by pilot uptake.
+- The main screen compares the selected joint configuration against the envelope and shows the nearest feasible tested joint configuration.
+- Non-binding grids are labelled as non-binding within the tested grid instead of as calibrated maxima.
 - No-feasible cases are handled by explicit status labels.
 - Every sensitivity row carries the fiscal-envelope value and definition.
 
 ## Public-Demo Guardrails
 
 - Model readiness and support-review status are distinct.
-- “None” is not counted as an open gate.
+- "None" is not counted as an open gate.
 - Public outputs are synthetic and provisional.
 - No output claims causal econometric estimation or actual Pakistan policy evidence.
-

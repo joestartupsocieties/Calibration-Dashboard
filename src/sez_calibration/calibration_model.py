@@ -9,7 +9,7 @@ import pandas as pd
 from .utils import clean_text, safe_divide, to_float
 
 
-MODEL_VERSION = "d6-calibration-mvp-v0.2"
+MODEL_VERSION = "d6-calibration-mvp-v0.2.1"
 YEARS = list(range(2026, 2036))
 SCENARIOS = {
     "no_sez_specific_incentive": "No SEZ-specific incentive reference",
@@ -295,8 +295,16 @@ def simulate_enterprise(
         prior_capex = capex_base * prior_growth
         prior_rd = rd_base * prior_growth
         prior_training = training_base * prior_growth
+        incentive_signal = _incentive_signal(
+            prior_capex,
+            prior_rd,
+            prior_training,
+            scenario_id,
+            assumptions,
+            support_can_claim,
+        )
         scenario_additionality = _scenario_additionality_share(enterprise, assumptions, scenario_id, additionality_case)
-        responsive_expenditure = _responsive_expenditure(prior_capex, prior_rd, prior_training, scenario_id, assumptions, support_can_claim)
+        responsive_expenditure = incentive_signal["responsive_expenditure_pkr_m"]
         incremental_income = responsive_expenditure * scenario_additionality * assumptions.taxable_return_on_incremental_expenditure
         assessed_income = reference_income + incremental_income
         reference_tax_liability = max(0.0, reference_income * assumptions.statutory_cit_rate)
@@ -365,6 +373,10 @@ def simulate_enterprise(
                 "reference_assessed_income_pkr_m": round(reference_income, 4),
                 "assessed_income_before_relief_pkr_m": round(assessed_income, 4),
                 "additionality_share": round(scenario_additionality, 6),
+                "potential_incentive_deduction_pkr_m": round(incentive_signal["potential_incentive_deduction_pkr_m"], 4),
+                "incentive_intensity_factor": round(incentive_signal["incentive_intensity_factor"], 6),
+                "responsive_expenditure_pkr_m": round(responsive_expenditure, 4),
+                "incentive_availability_status": incentive_signal["incentive_availability_status"],
                 "incremental_assessed_income_pkr_m": round(incremental_income, 4),
                 "benchmark_tax_liability_pkr_m": round(benchmark_tax_liability, 4),
                 "ordinary_reference_tax_pkr_m": round(reference_tax_liability, 4),
@@ -377,7 +389,10 @@ def simulate_enterprise(
                 "eligible_training_pkr_m": round(training, 4),
                 "total_qualifying_expenditure_pkr_m": round(capex + rd + training, 4),
                 "qualifying_expenditure_threshold_pkr_m": round(assumptions.qualifying_expenditure_threshold_pkr_m, 4),
-                **{key: round(value, 4) if isinstance(value, (float, int)) else value for key, value in deduction_data.items()},
+                **{
+                    key: (value if isinstance(value, bool) else round(value, 4) if isinstance(value, (float, int)) else value)
+                    for key, value in deduction_data.items()
+                },
                 "tax_expenditure_pkr_m": round(tax_expenditure, 4),
                 "direct_cit_expenditure_pkr_m": round(tax_expenditure, 4),
                 "customs_expenditure_pkr_m": round(customs_expenditure, 4),
@@ -429,6 +444,9 @@ def _combined_row(base: dict[str, Any], pilot: dict[str, Any], uptake: float, no
         "reference_assessed_income_pkr_m",
         "assessed_income_before_relief_pkr_m",
         "additionality_share",
+        "potential_incentive_deduction_pkr_m",
+        "incentive_intensity_factor",
+        "responsive_expenditure_pkr_m",
         "incremental_assessed_income_pkr_m",
         "benchmark_tax_liability_pkr_m",
         "ordinary_reference_tax_pkr_m",
@@ -443,11 +461,14 @@ def _combined_row(base: dict[str, Any], pilot: dict[str, Any], uptake: float, no
         "ordinary_capex_depreciation_offset_pkr_m",
         "rd_incremental_deduction_pkr_m",
         "training_incremental_deduction_pkr_m",
+        "deduction_generated_before_utilization_pkr_m",
         "deduction_generated_pkr_m",
         "deduction_used_pkr_m",
         "carryforward_used_pkr_m",
         "deduction_expired_pkr_m",
         "closing_carryforward_pkr_m",
+        "current_year_potential_incentive_deduction_pkr_m",
+        "current_year_incentive_intensity_factor",
         "tax_expenditure_pkr_m",
         "direct_cit_expenditure_pkr_m",
         "customs_expenditure_pkr_m",
@@ -483,6 +504,10 @@ def _combined_row(base: dict[str, Any], pilot: dict[str, Any], uptake: float, no
     out["scenario"] = SCENARIOS["combined_transition_pilot"]
     out["enterprise_tax_state"] = f"Blended pilot uptake {uptake:.0%}; non-pilot path: {non_pilot_scenario}"
     out["pilot_uptake_share"] = uptake
+    out["non_pilot_scenario_id"] = non_pilot_scenario
+    out["pilot_tax_state"] = pilot.get("enterprise_tax_state", "")
+    out["threshold_met"] = bool(pilot.get("threshold_met", base.get("threshold_met", False))) if uptake else bool(base.get("threshold_met", False))
+    out["incentive_availability_status"] = pilot.get("incentive_availability_status", base.get("incentive_availability_status", "")) if uptake else base.get("incentive_availability_status", "")
     out["binding_constraint"] = pilot.get("binding_constraint", base.get("binding_constraint", "not_applicable")) if uptake else base.get("binding_constraint", "not_applicable")
     return out
 
@@ -497,21 +522,15 @@ def _apply_cost_based_deductions(
     year: int,
 ) -> tuple[float, dict[str, Any], list[dict[str, float | int]]]:
     carryforward, expired = _expire_carryforward(carryforward, year)
-    ordinary_offset = capex / max(assumptions.ordinary_capex_depreciation_years, 1)
-    threshold = max(0.0, assumptions.qualifying_expenditure_threshold_pkr_m)
-    total_qualifying = capex + rd + training
-    threshold_met = total_qualifying >= threshold
-    capex_incremental = rd_incremental = training_incremental = 0.0
-    if threshold_met:
-        package = clean_text(assumptions.instrument_package).lower() or "full"
-        if package in {"full", "capex_only"}:
-            capex_incremental = max(0.0, capex * assumptions.capex_deduction_rate - ordinary_offset)
-        if package in {"full", "rd_training"}:
-            rd_incremental = max(0.0, rd * (assumptions.rd_super_deduction_total_rate - 1.0))
-            training_incremental = max(0.0, training * (assumptions.training_super_deduction_total_rate - 1.0))
-    generated_before_utilization = capex_incremental + rd_incremental + training_incremental
-    generated_after_utilization = generated_before_utilization * assumptions.utilization_rate
-    generated = min(generated_after_utilization, assumptions.annual_deduction_cap_pkr_m)
+    incentive = _cost_based_incentive_signal(capex, rd, training, assumptions)
+    ordinary_offset = incentive["ordinary_capex_depreciation_offset_pkr_m"]
+    threshold_met = bool(incentive["threshold_met"])
+    capex_incremental = incentive["capex_incremental_deduction_pkr_m"]
+    rd_incremental = incentive["rd_incremental_deduction_pkr_m"]
+    training_incremental = incentive["training_incremental_deduction_pkr_m"]
+    generated_before_utilization = incentive["deduction_generated_before_utilization_pkr_m"]
+    generated_after_utilization = incentive["deduction_generated_after_utilization_pkr_m"]
+    generated = incentive["potential_incentive_deduction_pkr_m"]
     current_entry = {"amount": generated, "expiry_year": year + assumptions.carry_forward_years, "origin_year": year}
     available_entries = carryforward + ([current_entry] if generated > 0 else [])
     used, carryforward_used, updated_entries = _use_carryforward_fifo(available_entries, benchmark_income, year)
@@ -525,11 +544,14 @@ def _apply_cost_based_deductions(
         "rd_incremental_deduction_pkr_m": rd_incremental,
         "training_incremental_deduction_pkr_m": training_incremental,
         "deduction_generated_before_utilization_pkr_m": generated_before_utilization,
+        "deduction_generated_after_utilization_pkr_m": generated_after_utilization,
         "deduction_generated_pkr_m": generated,
         "deduction_used_pkr_m": used,
         "carryforward_used_pkr_m": carryforward_used,
         "deduction_expired_pkr_m": expired,
         "closing_carryforward_pkr_m": closing,
+        "current_year_potential_incentive_deduction_pkr_m": generated,
+        "current_year_incentive_intensity_factor": incentive["incentive_intensity_factor"],
         "threshold_met": bool(threshold_met),
         "binding_constraint": binding,
     }, updated_entries
@@ -576,7 +598,20 @@ def build_portfolio_summary(annual: pd.DataFrame, assumptions: CalibrationAssump
         weighted_after_tax_npv = _weighted_npv(group, "after_tax_income_pkr_m")
         weighted_incremental_income_npv = _weighted_npv(group, "incremental_assessed_income_pkr_m")
         weighted_admin_cost_npv = _weighted_npv(group, "incremental_admin_cost_pkr_m")
-        review_hours = (group["admin_review_hours"] * group["aggregation_weight"]).sum() if "admin_review_hours" in group else 0.0
+        if "admin_review_hours" in group:
+            weighted_hours = group["admin_review_hours"] * group["aggregation_weight"]
+            review_hours = float(weighted_hours.sum())
+            annual_hours = (
+                pd.DataFrame({"fiscal_year": group["fiscal_year"], "weighted_hours": weighted_hours})
+                .groupby("fiscal_year")["weighted_hours"]
+                .sum()
+            )
+            peak_annual_hours = float(annual_hours.max()) if not annual_hours.empty else 0.0
+            average_annual_hours = float(annual_hours.mean()) if not annual_hours.empty else 0.0
+        else:
+            review_hours = 0.0
+            peak_annual_hours = 0.0
+            average_annual_hours = 0.0
         rows.append(
             {
                 "scenario_id": scenario_id,
@@ -591,7 +626,10 @@ def build_portfolio_summary(annual: pd.DataFrame, assumptions: CalibrationAssump
                 "npv_incremental_assessed_income_pkr_m": round(weighted_incremental_income_npv, 4),
                 "npv_admin_cost_pkr_m": round(weighted_admin_cost_npv, 4),
                 "review_workload_hours": round(review_hours, 4),
-                "indicative_fte_requirement": round(review_hours / assumptions.annual_fte_hours, 6),
+                "peak_annual_review_workload_hours": round(peak_annual_hours, 4),
+                "average_annual_review_workload_hours": round(average_annual_hours, 4),
+                "indicative_fte_requirement": round(peak_annual_hours / assumptions.annual_fte_hours, 6),
+                "average_annual_fte_requirement": round(average_annual_hours / assumptions.annual_fte_hours, 6),
                 "fiscal_cost_per_incremental_income": (
                     round(weighted_cost_npv / weighted_incremental_income_npv, 6) if weighted_incremental_income_npv else "Not estimable"
                 ),
@@ -680,11 +718,20 @@ def build_parameter_ranges(enterprises: pd.DataFrame, assumptions: CalibrationAs
                                 summary = build_portfolio_summary(annual, variant)
                                 portfolio = summary[summary["scenario_id"].eq("cost_based_regime")].iloc[0]
                                 full_pilot_cost = float(portfolio["npv_gross_fiscal_cost_pkr_m"])
+                                full_pilot_incremental = float(portfolio["npv_incremental_assessed_income_pkr_m"])
+                                full_pilot_admin_cost = float(portfolio["npv_admin_cost_pkr_m"])
+                                full_pilot_review_hours = float(portfolio["review_workload_hours"])
+                                full_pilot_peak_hours = float(portfolio.get("peak_annual_review_workload_hours", 0.0))
                                 tested_cost = full_pilot_cost * uptake
+                                tested_incremental = full_pilot_incremental * uptake
+                                tested_admin_cost = full_pilot_admin_cost * uptake
+                                tested_review_hours = full_pilot_review_hours * uptake
+                                tested_peak_hours = full_pilot_peak_hours * uptake
                                 feasible = tested_cost <= envelope
-                                incremental = portfolio["npv_incremental_assessed_income_pkr_m"]
-                                admin_cost = portfolio["npv_admin_cost_pkr_m"]
                                 binding = _frontier_binding_constraint(annual, feasible, tested_cost, envelope)
+                                tested_cost_per_incremental = (
+                                    round(tested_cost / tested_incremental, 6) if tested_incremental else "Not estimable"
+                                )
                                 rows.append(
                                     {
                                         "additionality_case": case,
@@ -696,6 +743,9 @@ def build_parameter_ranges(enterprises: pd.DataFrame, assumptions: CalibrationAs
                                         "utilization_rate": utilization,
                                         "pilot_uptake_share": uptake,
                                         "npv_full_pilot_gross_fiscal_cost_pkr_m": round(full_pilot_cost, 4),
+                                        "npv_full_pilot_incremental_assessed_income_pkr_m": round(full_pilot_incremental, 4),
+                                        "npv_full_pilot_admin_cost_pkr_m": round(full_pilot_admin_cost, 4),
+                                        "full_pilot_review_workload_hours": round(full_pilot_review_hours, 4),
                                         "npv_tested_fiscal_cost_pkr_m": round(tested_cost, 4),
                                         "npv_gross_fiscal_cost_pkr_m": round(tested_cost, 4),
                                         "fiscal_envelope_pkr_m": round(envelope, 4),
@@ -704,10 +754,12 @@ def build_parameter_ranges(enterprises: pd.DataFrame, assumptions: CalibrationAs
                                         "feasible_flag": bool(feasible),
                                         "solver_status": "within_illustrative_D5_envelope" if feasible else "outside_illustrative_D5_envelope",
                                         "binding_constraint": binding,
-                                        "npv_incremental_assessed_income_pkr_m": incremental,
-                                        "npv_admin_cost_pkr_m": admin_cost,
-                                        "review_workload_hours": portfolio["review_workload_hours"],
-                                        "fiscal_cost_per_incremental_income": portfolio["fiscal_cost_per_incremental_income"],
+                                        "npv_incremental_assessed_income_pkr_m": round(tested_incremental, 4),
+                                        "npv_admin_cost_pkr_m": round(tested_admin_cost, 4),
+                                        "review_workload_hours": round(tested_review_hours, 4),
+                                        "peak_annual_review_workload_hours": round(tested_peak_hours, 4),
+                                        "indicative_fte_requirement": round(tested_peak_hours / variant.annual_fte_hours, 6),
+                                        "fiscal_cost_per_incremental_income": tested_cost_per_incremental,
                                         "duration_sunset": "Temporary only; no SEZ-specific incentive after 30 June 2035.",
                                         "model_version": MODEL_VERSION,
                                     }
@@ -1064,11 +1116,14 @@ def _empty_deduction_data() -> dict[str, Any]:
         "rd_incremental_deduction_pkr_m": 0.0,
         "training_incremental_deduction_pkr_m": 0.0,
         "deduction_generated_before_utilization_pkr_m": 0.0,
+        "deduction_generated_after_utilization_pkr_m": 0.0,
         "deduction_generated_pkr_m": 0.0,
         "deduction_used_pkr_m": 0.0,
         "carryforward_used_pkr_m": 0.0,
         "deduction_expired_pkr_m": 0.0,
         "closing_carryforward_pkr_m": 0.0,
+        "current_year_potential_incentive_deduction_pkr_m": 0.0,
+        "current_year_incentive_intensity_factor": 0.0,
         "threshold_met": False,
         "binding_constraint": "not_applicable",
     }
@@ -1181,6 +1236,119 @@ def _responsive_expenditure(
     return total
 
 
+def _incentive_signal(
+    capex: float,
+    rd: float,
+    training: float,
+    scenario_id: str,
+    assumptions: CalibrationAssumptions,
+    support_can_claim: bool,
+) -> dict[str, Any]:
+    selected_expenditure = _responsive_expenditure(capex, rd, training, scenario_id, assumptions, support_can_claim)
+    if selected_expenditure <= 0:
+        return {
+            "responsive_expenditure_pkr_m": 0.0,
+            "potential_incentive_deduction_pkr_m": 0.0,
+            "incentive_intensity_factor": 0.0,
+            "incentive_availability_status": "no_incentive_available",
+        }
+    if scenario_id in {"status_quo_to_2035", "accelerated_removal"}:
+        return {
+            "responsive_expenditure_pkr_m": selected_expenditure,
+            "potential_incentive_deduction_pkr_m": 0.0,
+            "incentive_intensity_factor": 1.0,
+            "incentive_availability_status": "legacy_incentive_available_until_sunset",
+        }
+    if scenario_id != "cost_based_regime":
+        return {
+            "responsive_expenditure_pkr_m": 0.0,
+            "potential_incentive_deduction_pkr_m": 0.0,
+            "incentive_intensity_factor": 0.0,
+            "incentive_availability_status": "not_applicable",
+        }
+
+    signal = _cost_based_incentive_signal(capex, rd, training, assumptions)
+    potential_deduction = signal["potential_incentive_deduction_pkr_m"]
+    if potential_deduction <= 0:
+        return {
+            "responsive_expenditure_pkr_m": 0.0,
+            "potential_incentive_deduction_pkr_m": 0.0,
+            "incentive_intensity_factor": 0.0,
+            "incentive_availability_status": signal["incentive_availability_status"],
+        }
+    return {
+        "responsive_expenditure_pkr_m": signal["responsive_expenditure_pkr_m"],
+        "potential_incentive_deduction_pkr_m": potential_deduction,
+        "incentive_intensity_factor": signal["incentive_intensity_factor"],
+        "incentive_availability_status": signal["incentive_availability_status"],
+    }
+
+
+def _cost_based_incentive_signal(
+    capex: float,
+    rd: float,
+    training: float,
+    assumptions: CalibrationAssumptions,
+) -> dict[str, Any]:
+    package = clean_text(assumptions.instrument_package).lower() or "full"
+    ordinary_offset = capex / max(assumptions.ordinary_capex_depreciation_years, 1)
+    threshold = max(0.0, assumptions.qualifying_expenditure_threshold_pkr_m)
+    total_qualifying = capex + rd + training
+    threshold_met = total_qualifying >= threshold
+
+    selected_components = {"capex": 0.0, "rd": 0.0, "training": 0.0}
+    gross_components = {"capex": 0.0, "rd": 0.0, "training": 0.0}
+    if threshold_met:
+        if package in {"full", "capex_only"}:
+            selected_components["capex"] = capex
+            gross_components["capex"] = max(0.0, capex * max(0.0, assumptions.capex_deduction_rate) - ordinary_offset)
+        if package in {"full", "rd_training"}:
+            selected_components["rd"] = rd
+            selected_components["training"] = training
+            gross_components["rd"] = max(0.0, rd * (assumptions.rd_super_deduction_total_rate - 1.0))
+            gross_components["training"] = max(0.0, training * (assumptions.training_super_deduction_total_rate - 1.0))
+
+    generated_before_utilization = sum(gross_components.values())
+    utilization = min(max(float(assumptions.utilization_rate), 0.0), 1.0)
+    generated_after_utilization = generated_before_utilization * utilization
+    annual_cap = max(0.0, assumptions.annual_deduction_cap_pkr_m)
+    generated = min(generated_after_utilization, annual_cap)
+
+    allocation_factor = safe_divide(generated, generated_after_utilization) or 0.0
+    responsive_expenditure = 0.0
+    for key, gross_deduction in gross_components.items():
+        selected = selected_components[key]
+        available_component_deduction = gross_deduction * utilization * allocation_factor
+        responsive_expenditure += min(selected, available_component_deduction)
+
+    selected_expenditure = sum(selected_components.values())
+    intensity = safe_divide(responsive_expenditure, selected_expenditure) or 0.0
+    if not threshold_met:
+        status = "qualifying_threshold_blocks_incentive"
+    elif generated_before_utilization <= 0:
+        status = "no_eligible_incremental_deduction"
+    elif generated <= 0 and utilization <= 0:
+        status = "utilization_zero_blocks_incentive"
+    elif generated <= 0 and annual_cap <= 0:
+        status = "annual_cap_zero_blocks_incentive"
+    else:
+        status = "positive_incentive_available"
+
+    return {
+        "capex_incremental_deduction_pkr_m": gross_components["capex"],
+        "ordinary_capex_depreciation_offset_pkr_m": ordinary_offset,
+        "rd_incremental_deduction_pkr_m": gross_components["rd"],
+        "training_incremental_deduction_pkr_m": gross_components["training"],
+        "deduction_generated_before_utilization_pkr_m": generated_before_utilization,
+        "deduction_generated_after_utilization_pkr_m": generated_after_utilization,
+        "potential_incentive_deduction_pkr_m": generated,
+        "responsive_expenditure_pkr_m": responsive_expenditure,
+        "incentive_intensity_factor": min(max(intensity, 0.0), 1.0),
+        "threshold_met": bool(threshold_met),
+        "incentive_availability_status": status,
+    }
+
+
 def _administrative_cost(
     deduction_data: dict[str, Any],
     assumptions: CalibrationAssumptions,
@@ -1223,6 +1391,8 @@ def _deduction_binding_constraint(
 
 
 def _frontier_binding_constraint(annual: pd.DataFrame, feasible: bool, cost: float, envelope: float) -> str:
+    if cost <= 1e-9:
+        return "no_pilot_uptake_or_no_available_incentive"
     if not feasible:
         return "fiscal_envelope"
     if abs(envelope - cost) <= max(50.0, envelope * 0.01):

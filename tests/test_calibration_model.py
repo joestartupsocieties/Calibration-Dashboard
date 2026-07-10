@@ -8,7 +8,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from sez_calibration.calibration_model import CalibrationAssumptions, simulate_enterprise, solve_revenue_neutral_parameter
+from sez_calibration.calibration_model import (
+    CalibrationAssumptions,
+    build_parameter_ranges,
+    build_portfolio_summary,
+    simulate_enterprise,
+    solve_revenue_neutral_parameter,
+)
 from sez_calibration.export_outputs import run_pipeline
 
 
@@ -148,6 +154,92 @@ def test_no_incentive_reference_receives_no_incentive_caused_additionality() -> 
     assert all(row["incremental_assessed_income_pkr_m"] == 0 for row in rows)
 
 
+def test_cost_based_incremental_income_requires_positive_available_incentive() -> None:
+    ent = enterprise(
+        baseline_assessed_income_pkr_m=10_000.0,
+        eligible_capex_pkr_m=5_000.0,
+        eligible_rd_pkr_m=0.0,
+        eligible_training_pkr_m=0.0,
+    )
+    no_rate = pd.DataFrame(
+        simulate_enterprise(
+            ent,
+            CalibrationAssumptions(
+                instrument_package="capex_only",
+                capex_deduction_rate=0.0,
+                annual_deduction_cap_pkr_m=10_000.0,
+                utilization_rate=1.0,
+                qualifying_expenditure_threshold_pkr_m=0.0,
+            ),
+            "cost_based_regime",
+            "high",
+        )
+    )
+    no_cap = pd.DataFrame(
+        simulate_enterprise(
+            ent,
+            CalibrationAssumptions(
+                instrument_package="capex_only",
+                capex_deduction_rate=1.25,
+                annual_deduction_cap_pkr_m=0.0,
+                utilization_rate=1.0,
+                qualifying_expenditure_threshold_pkr_m=0.0,
+            ),
+            "cost_based_regime",
+            "high",
+        )
+    )
+    no_utilization = pd.DataFrame(
+        simulate_enterprise(
+            ent,
+            CalibrationAssumptions(
+                instrument_package="capex_only",
+                capex_deduction_rate=1.25,
+                annual_deduction_cap_pkr_m=10_000.0,
+                utilization_rate=0.0,
+                qualifying_expenditure_threshold_pkr_m=0.0,
+            ),
+            "cost_based_regime",
+            "high",
+        )
+    )
+    threshold_blocks = pd.DataFrame(
+        simulate_enterprise(
+            ent,
+            CalibrationAssumptions(
+                instrument_package="capex_only",
+                capex_deduction_rate=1.25,
+                annual_deduction_cap_pkr_m=10_000.0,
+                utilization_rate=1.0,
+                qualifying_expenditure_threshold_pkr_m=999_999.0,
+            ),
+            "cost_based_regime",
+            "high",
+        )
+    )
+    positive = pd.DataFrame(
+        simulate_enterprise(
+            ent,
+            CalibrationAssumptions(
+                instrument_package="capex_only",
+                capex_deduction_rate=1.25,
+                annual_deduction_cap_pkr_m=10_000.0,
+                utilization_rate=1.0,
+                qualifying_expenditure_threshold_pkr_m=0.0,
+            ),
+            "cost_based_regime",
+            "high",
+        )
+    )
+
+    for blocked in [no_rate, no_cap, no_utilization, threshold_blocks]:
+        assert blocked["potential_incentive_deduction_pkr_m"].sum() == 0
+        assert blocked["incentive_intensity_factor"].sum() == 0
+        assert blocked["incremental_assessed_income_pkr_m"].sum() == 0
+    assert positive["potential_incentive_deduction_pkr_m"].sum() > 0
+    assert positive["incremental_assessed_income_pkr_m"].sum() > 0
+
+
 def test_parameter_controls_change_results_when_relevant() -> None:
     ent = pd.Series(
         enterprise(
@@ -183,6 +275,7 @@ def test_parameter_controls_change_results_when_relevant() -> None:
     assert high_cap["gross_fiscal_cost_pkr_m"].sum() > low_cap["gross_fiscal_cost_pkr_m"].sum()
     assert capex_only["gross_fiscal_cost_pkr_m"].sum() != rd_training["gross_fiscal_cost_pkr_m"].sum()
     assert threshold_blocks["deduction_generated_pkr_m"].sum() == 0
+    assert threshold_blocks["incremental_assessed_income_pkr_m"].sum() == 0
 
 
 def test_fiscal_identities_and_carryforward_reconcile() -> None:
@@ -200,6 +293,66 @@ def test_fiscal_identities_and_carryforward_reconcile() -> None:
     assert (rows["cash_net_revenue_pkr_m"] - (rows["tax_collected_pkr_m"] - rows["incremental_admin_cost_pkr_m"] - rows["other_government_cash_cost_pkr_m"])).abs().max() < 1e-3
     assert rows["tax_due_pkr_m"].min() >= 0
     assert rows["closing_carryforward_pkr_m"].max() >= 0
+
+
+def test_frontier_outputs_scale_by_pilot_uptake() -> None:
+    assumptions = CalibrationAssumptions(
+        capex_deduction_rate=1.25,
+        annual_deduction_cap_pkr_m=25_000.0,
+        qualifying_expenditure_threshold_pkr_m=0.0,
+        utilization_rate=0.8,
+        d5_fiscal_envelope_pkr_m=10_000_000.0,
+    )
+    frontier = build_parameter_ranges(
+        pd.DataFrame(
+            [
+                enterprise(
+                    baseline_assessed_income_pkr_m=50_000.0,
+                    eligible_capex_pkr_m=10_000.0,
+                    eligible_rd_pkr_m=1_000.0,
+                    eligible_training_pkr_m=500.0,
+                )
+            ]
+        ),
+        assumptions,
+    )
+    subset = frontier[
+        frontier["additionality_case"].eq("base")
+        & frontier["instrument_package"].eq("full")
+        & frontier["capex_deduction_rate"].eq(1.25)
+        & frontier["annual_cap_pkr_m"].eq(25_000.0)
+        & frontier["qualifying_threshold_pkr_m"].eq(0.0)
+    ].set_index("pilot_uptake_share")
+
+    assert subset.loc[0.0, "npv_tested_fiscal_cost_pkr_m"] == 0
+    assert subset.loc[0.0, "npv_incremental_assessed_income_pkr_m"] == 0
+    assert subset.loc[0.0, "review_workload_hours"] == 0
+    assert abs(subset.loc[0.6, "npv_tested_fiscal_cost_pkr_m"] - subset.loc[1.0, "npv_tested_fiscal_cost_pkr_m"] * 0.6) < 1e-3
+    assert abs(subset.loc[0.6, "npv_incremental_assessed_income_pkr_m"] - subset.loc[1.0, "npv_incremental_assessed_income_pkr_m"] * 0.6) < 1e-3
+    assert abs(subset.loc[0.6, "review_workload_hours"] - subset.loc[1.0, "review_workload_hours"] * 0.6) < 1e-3
+
+
+def test_portfolio_fte_uses_annual_workload_not_total_projection_hours() -> None:
+    assumptions = CalibrationAssumptions(annual_fte_hours=100.0, qualifying_expenditure_threshold_pkr_m=0.0)
+    annual = pd.DataFrame(
+        simulate_enterprise(
+            enterprise(
+                baseline_assessed_income_pkr_m=10_000.0,
+                eligible_capex_pkr_m=5_000.0,
+            ),
+            assumptions,
+            "cost_based_regime",
+            "base",
+        )
+    )
+    summary = build_portfolio_summary(annual, assumptions)
+    row = summary[summary["scenario_id"].eq("cost_based_regime") & summary["additionality_case"].eq("base")].iloc[0]
+    weighted_annual_hours = annual["admin_review_hours"] * annual["aggregation_weight"]
+    peak_hours = pd.DataFrame({"year": annual["fiscal_year"], "hours": weighted_annual_hours}).groupby("year")["hours"].sum().max()
+
+    assert row["review_workload_hours"] == round(weighted_annual_hours.sum(), 4)
+    assert row["peak_annual_review_workload_hours"] == round(peak_hours, 4)
+    assert row["indicative_fte_requirement"] == round(peak_hours / assumptions.annual_fte_hours, 6)
 
 
 def test_pipeline_writes_d6_workbook_sheets(tmp_path: Path) -> None:

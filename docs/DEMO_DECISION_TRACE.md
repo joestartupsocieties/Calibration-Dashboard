@@ -2,7 +2,7 @@
 
 ## Decision Question
 
-For one synthetic enterprise archetype or portfolio slice, what temporary cost-based incentive parameter combinations could be tested within an illustrative D5 fiscal envelope under low/base/high additionality assumptions?
+Is the currently selected temporary cost-based incentive configuration within the illustrative D5 fiscal envelope, and if not, what is the nearest feasible tested joint configuration?
 
 ## Trace
 
@@ -29,11 +29,13 @@ For one synthetic enterprise archetype or portfolio slice, what temporary cost-b
    - Annual cap limits generated deductions.
    - Threshold blocks claims below minimum annual qualifying expenditure.
    - Utilization controls how much generated deduction is claimed.
-   - Uptake controls pilot participation share in the frontier.
+   - Uptake controls pilot participation share in the tested joint configuration frontier.
+   - If the selected settings generate no available deduction, incentive-caused incremental income is zero.
 
 6. **Fiscal envelope**
    - The envelope is an illustrative synthetic D5 ceiling.
-   - The model reports tested fiscal cost, margin, and whether each combination is within the envelope.
+   - The model reports the selected configuration's tested fiscal cost, margin, and whether it is within the envelope.
+   - If the selected configuration is outside the envelope, the UI shows the nearest feasible tested joint configuration.
 
 7. **Additionality**
    - Low/base/high cases are sensitivity assumptions.
@@ -47,5 +49,4 @@ For one synthetic enterprise archetype or portfolio slice, what temporary cost-b
 
 ## Correct Demo Close
 
-The output is a provisional parameter range to test or a precise blocker with missing field, owner, and analytical consequence. It is not a final rate, fiscal estimate, incentive approval, legal determination, or pilot selection.
-
+The output is a provisional joint-configuration screen or a precise blocker with missing field, owner, and analytical consequence. It is not a final rate, fiscal estimate, incentive approval, legal determination, or pilot selection.

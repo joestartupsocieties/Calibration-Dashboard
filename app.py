@@ -36,7 +36,7 @@ from sez_calibration.ui_copy import (  # noqa: E402
 )
 
 
-APP_VERSION = "prototype-demo-v0.8"
+APP_VERSION = "prototype-demo-v0.8.1"
 WARNING_TEXT = NON_DECISION_STATEMENT
 ADDITIONALITY_NOTE = (
     "Reported production or construction is not treated as proof of incentive effectiveness. "
@@ -57,6 +57,15 @@ SOURCE_PERMISSION_WARNING = "Source data may require permission before external 
 REASON_CODES_FILE = ROOT / "config" / "reason_codes_v0_5_lite.yaml"
 UI_CACHE_VERSION = APP_VERSION
 SHOW_ADVANCED_SCENARIOS = os.getenv("SHOW_ADVANCED_SCENARIOS") == "1"
+D6_DEFAULTS = {
+    "d6_instrument_package": "full",
+    "d6_capex_deduction_rate": 0.75,
+    "d6_annual_deduction_cap_pkr_m": 18000.0,
+    "d6_qualifying_threshold_pkr_m": 3000.0,
+    "d6_utilization_rate": 0.80,
+    "d6_pilot_uptake_share": 0.60,
+    "d6_discount_rate": 0.12,
+}
 
 PAGES = [
     "Calibration Analysis",
@@ -847,13 +856,6 @@ def initialize_state() -> None:
     st.session_state.anonymize_zone_names = True
     st.session_state.setdefault("demo_case_key", "zone_a")
     st.session_state.data_mode = "Synthetic demo data"
-    st.session_state.setdefault("d6_instrument_package", "full")
-    st.session_state.setdefault("d6_capex_deduction_rate", 0.75)
-    st.session_state.setdefault("d6_annual_deduction_cap_pkr_m", 18000.0)
-    st.session_state.setdefault("d6_qualifying_threshold_pkr_m", 3000.0)
-    st.session_state.setdefault("d6_utilization_rate", 0.80)
-    st.session_state.setdefault("d6_pilot_uptake_share", 0.60)
-    st.session_state.setdefault("d6_discount_rate", 0.12)
 
 
 def scenario_from_state() -> dict[str, object]:
@@ -874,13 +876,17 @@ def scenario_from_state() -> dict[str, object]:
             st.session_state.prefer_non_fiscal_when_additionality_uncertain
         ),
         "diagnostic_only": bool(st.session_state.diagnostic_only),
-        "d6_instrument_package": str(st.session_state.d6_instrument_package),
-        "d6_capex_deduction_rate": float(st.session_state.d6_capex_deduction_rate),
-        "d6_annual_deduction_cap_pkr_m": float(st.session_state.d6_annual_deduction_cap_pkr_m),
-        "d6_qualifying_threshold_pkr_m": float(st.session_state.d6_qualifying_threshold_pkr_m),
-        "d6_utilization_rate": float(st.session_state.d6_utilization_rate),
-        "d6_pilot_uptake_share": float(st.session_state.d6_pilot_uptake_share),
-        "d6_discount_rate": float(st.session_state.d6_discount_rate),
+        "d6_instrument_package": str(st.session_state.get("d6_instrument_package", D6_DEFAULTS["d6_instrument_package"])),
+        "d6_capex_deduction_rate": float(st.session_state.get("d6_capex_deduction_rate", D6_DEFAULTS["d6_capex_deduction_rate"])),
+        "d6_annual_deduction_cap_pkr_m": float(
+            st.session_state.get("d6_annual_deduction_cap_pkr_m", D6_DEFAULTS["d6_annual_deduction_cap_pkr_m"])
+        ),
+        "d6_qualifying_threshold_pkr_m": float(
+            st.session_state.get("d6_qualifying_threshold_pkr_m", D6_DEFAULTS["d6_qualifying_threshold_pkr_m"])
+        ),
+        "d6_utilization_rate": float(st.session_state.get("d6_utilization_rate", D6_DEFAULTS["d6_utilization_rate"])),
+        "d6_pilot_uptake_share": float(st.session_state.get("d6_pilot_uptake_share", D6_DEFAULTS["d6_pilot_uptake_share"])),
+        "d6_discount_rate": float(st.session_state.get("d6_discount_rate", D6_DEFAULTS["d6_discount_rate"])),
     }
 
 
@@ -2465,8 +2471,8 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
     )
     callout_card(
         "Decision question",
-        "Which temporary CAPEX/R&D/training parameter combinations could be tested within the visible fiscal envelope, "
-        "under low/base/high additionality assumptions, and what verification and D7 recalibration rules are required before proceeding?",
+        "Is the currently selected temporary CAPEX/R&D/training configuration within the visible fiscal envelope, "
+        "and if not, what is the nearest feasible tested configuration? What verification and D7 recalibration rules are required before proceeding?",
     )
 
     annual = frames.get("calibration_annual_enterprise", pd.DataFrame())
@@ -2489,11 +2495,13 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
     status_row = _portfolio_row(base, "status_quo_to_2035")
     cost_row = _portfolio_row(base, "cost_based_regime")
     frontier_base = params[params["additionality_case"].astype(str).eq("base")] if not params.empty else pd.DataFrame()
-    feasible_base = frontier_base[frontier_base.get("feasible_flag", pd.Series(dtype=bool)).astype(bool)] if not frontier_base.empty else pd.DataFrame()
-    envelope = cost_row.get("fiscal_envelope_pkr_m", 0)
-    margin = cost_row.get("envelope_margin_pkr_m", 0)
-    binding = _dominant_binding_constraint(frontier_base)
-    feasible_range = _feasible_range_text(feasible_base)
+    current_decision = _current_joint_decision(cost_row)
+    envelope = current_decision["envelope"]
+    margin = current_decision["margin"]
+    current_status = current_decision["status"]
+    current_config_text = _current_joint_configuration_text(current_decision)
+    nearest_feasible = _nearest_feasible_configuration(frontier_base)
+    nearest_feasible_text = _configuration_row_text(nearest_feasible)
 
     c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
@@ -2501,11 +2509,11 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
     with c2:
         metric_card("D5 fiscal ceiling", _pkr_m(envelope), "Illustrative synthetic envelope")
     with c3:
-        metric_card("Modelled fiscal cost", _pkr_m(cost_row.get("npv_gross_fiscal_cost_pkr_m")), "Current cost-based package")
+        metric_card("Modelled fiscal cost", _pkr_m(current_decision["cost"]), "Selected joint configuration")
     with c4:
         metric_card("Envelope margin", _pkr_m(margin), "Positive means within envelope")
     with c5:
-        metric_card("Binding constraint", visible_text(binding), feasible_range)
+        metric_card("Envelope status", current_status, "For the selected joint configuration")
 
     scenario_options = _scenario_options(scenario_defs, portfolio)
     col1, col2, col3 = st.columns([2, 1, 1])
@@ -2532,21 +2540,27 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
             key="d6_instrument_package",
         )
     with p2:
-        st.number_input("CAPEX rate", min_value=0.0, max_value=2.0, step=0.05, key="d6_capex_deduction_rate")
+        _d6_number_input("CAPEX rate", "d6_capex_deduction_rate", min_value=0.0, max_value=2.0, step=0.05)
     with p3:
-        st.number_input(
+        _d6_number_input(
             "Annual cap (PKR m)",
+            "d6_annual_deduction_cap_pkr_m",
             min_value=0.0,
             max_value=50000.0,
             step=500.0,
-            key="d6_annual_deduction_cap_pkr_m",
         )
     with p4:
-        st.number_input("Threshold (PKR m)", min_value=0.0, max_value=50000.0, step=500.0, key="d6_qualifying_threshold_pkr_m")
+        _d6_number_input(
+            "Threshold (PKR m)",
+            "d6_qualifying_threshold_pkr_m",
+            min_value=0.0,
+            max_value=50000.0,
+            step=500.0,
+        )
     with p5:
-        st.number_input("Utilization", min_value=0.0, max_value=1.0, step=0.05, key="d6_utilization_rate")
+        _d6_number_input("Utilization", "d6_utilization_rate", min_value=0.0, max_value=1.0, step=0.05)
     with p6:
-        st.number_input("Pilot uptake", min_value=0.0, max_value=1.0, step=0.05, key="d6_pilot_uptake_share")
+        _d6_number_input("Pilot uptake", "d6_pilot_uptake_share", min_value=0.0, max_value=1.0, step=0.05)
 
     d1, d2 = st.columns([0.72, 0.28])
     with d1:
@@ -2554,12 +2568,13 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
         comparison = _portfolio_comparison_table(portfolio, additionality_case)
         st.dataframe(comparison, width="stretch", hide_index=True)
     with d2:
-        output_card("Provisional range to test", feasible_range)
+        output_card("Current joint configuration", current_config_text)
+        output_card("Nearest feasible tested configuration", nearest_feasible_text)
         output_card("Required verification", "D4 legal review; D5/FBR fiscal validation; audited claim evidence")
         output_card("D7 action if exceeded", "Tighten, suspend, or recalibrate")
 
     with st.expander("Discount-rate assumption", expanded=False):
-        st.number_input("Discount rate", min_value=0.0, max_value=0.5, step=0.01, key="d6_discount_rate")
+        _d6_number_input("Discount rate", "d6_discount_rate", min_value=0.0, max_value=0.5, step=0.01)
 
     chart_df = _portfolio_cost_chart(annual, additionality_case, selected_scenario_id)
     if not chart_df.empty:
@@ -2581,7 +2596,7 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
             ]
             st.line_chart(chart)
 
-    st.markdown("#### Feasible Parameter Frontier")
+    st.markdown("#### Tested Joint Configuration Frontier")
     st.dataframe(_parameter_ranges_table(params), width="stretch", hide_index=True)
 
     st.markdown("#### Verification Requirements")
@@ -2762,6 +2777,125 @@ def _dominant_binding_constraint(params: pd.DataFrame) -> str:
     return counts.index[0].replace("_", " ").title()
 
 
+def _current_envelope_status(row: pd.Series) -> str:
+    if row.empty:
+        return "Not calculated"
+    within = bool(row.get("within_envelope", False))
+    margin = pd.to_numeric(pd.Series([row.get("envelope_margin_pkr_m")]), errors="coerce").iloc[0]
+    if within:
+        return "Within envelope"
+    if pd.notna(margin):
+        return "Outside envelope"
+    return "Not calculated"
+
+
+def _current_joint_decision(row: pd.Series) -> dict[str, object]:
+    if row.empty:
+        return {"cost": None, "envelope": None, "margin": None, "within": False, "status": "Not calculated"}
+    uptake = float(st.session_state.get("d6_pilot_uptake_share", D6_DEFAULTS["d6_pilot_uptake_share"]))
+    full_cost = pd.to_numeric(pd.Series([row.get("npv_gross_fiscal_cost_pkr_m")]), errors="coerce").iloc[0]
+    envelope = pd.to_numeric(pd.Series([row.get("fiscal_envelope_pkr_m")]), errors="coerce").iloc[0]
+    if pd.isna(full_cost) or pd.isna(envelope):
+        return {"cost": None, "envelope": envelope, "margin": None, "within": False, "status": "Not calculated"}
+    tested_cost = float(full_cost) * min(max(uptake, 0.0), 1.0)
+    margin = float(envelope) - tested_cost
+    within = tested_cost <= float(envelope)
+    return {
+        "cost": tested_cost,
+        "envelope": float(envelope),
+        "margin": margin,
+        "within": within,
+        "status": "Within envelope" if within else "Outside envelope",
+    }
+
+
+def _current_joint_configuration_text(decision: dict[str, object] | None = None) -> str:
+    suffix = ""
+    if decision:
+        suffix = f" Tested cost {_pkr_m(decision.get('cost'))}; margin {_pkr_m(decision.get('margin'))}."
+    return (
+        f"{_package_display(st.session_state.get('d6_instrument_package', D6_DEFAULTS['d6_instrument_package']))}; "
+        f"CAPEX rate {float(st.session_state.get('d6_capex_deduction_rate', D6_DEFAULTS['d6_capex_deduction_rate'])):.2f}; "
+        f"annual cap {float(st.session_state.get('d6_annual_deduction_cap_pkr_m', D6_DEFAULTS['d6_annual_deduction_cap_pkr_m'])):,.0f} PKR m; "
+        f"threshold {float(st.session_state.get('d6_qualifying_threshold_pkr_m', D6_DEFAULTS['d6_qualifying_threshold_pkr_m'])):,.0f} PKR m; "
+        f"utilization {float(st.session_state.get('d6_utilization_rate', D6_DEFAULTS['d6_utilization_rate'])):.0%}; "
+        f"pilot uptake {float(st.session_state.get('d6_pilot_uptake_share', D6_DEFAULTS['d6_pilot_uptake_share'])):.0%}."
+        f"{suffix}"
+    )
+
+
+def _package_display(value: object) -> str:
+    labels = {
+        "full": "CAPEX / R&D / training",
+        "capex_only": "CAPEX-only",
+        "rd_training": "R&D / training",
+    }
+    key = str(value or "full")
+    return labels.get(key, key.replace("_", " ").title())
+
+
+def _d6_number_input(label: str, key: str, *, min_value: float, max_value: float, step: float) -> None:
+    kwargs: dict[str, Any] = {
+        "label": label,
+        "min_value": min_value,
+        "max_value": max_value,
+        "step": step,
+        "key": key,
+    }
+    if key not in st.session_state:
+        kwargs["value"] = float(D6_DEFAULTS[key])
+    st.number_input(**kwargs)
+
+
+def _nearest_feasible_configuration(params: pd.DataFrame) -> pd.Series:
+    if params.empty or "feasible_flag" not in params.columns:
+        return pd.Series(dtype=object)
+    feasible = params[params["feasible_flag"].astype(bool)].copy()
+    if feasible.empty:
+        return pd.Series(dtype=object)
+    current = {
+        "instrument_package": str(st.session_state.get("d6_instrument_package", D6_DEFAULTS["d6_instrument_package"])),
+        "capex_deduction_rate": float(st.session_state.get("d6_capex_deduction_rate", D6_DEFAULTS["d6_capex_deduction_rate"])),
+        "annual_cap_pkr_m": float(st.session_state.get("d6_annual_deduction_cap_pkr_m", D6_DEFAULTS["d6_annual_deduction_cap_pkr_m"])),
+        "qualifying_threshold_pkr_m": float(
+            st.session_state.get("d6_qualifying_threshold_pkr_m", D6_DEFAULTS["d6_qualifying_threshold_pkr_m"])
+        ),
+        "utilization_rate": float(st.session_state.get("d6_utilization_rate", D6_DEFAULTS["d6_utilization_rate"])),
+        "pilot_uptake_share": float(st.session_state.get("d6_pilot_uptake_share", D6_DEFAULTS["d6_pilot_uptake_share"])),
+    }
+    numeric_fields = [
+        "capex_deduction_rate",
+        "annual_cap_pkr_m",
+        "qualifying_threshold_pkr_m",
+        "utilization_rate",
+        "pilot_uptake_share",
+    ]
+    distance = (feasible["instrument_package"].astype(str) != current["instrument_package"]).astype(float) * 2.0
+    for field in numeric_fields:
+        values = pd.to_numeric(feasible[field], errors="coerce")
+        span = max(float(values.max() - values.min()), abs(current[field]), 1.0)
+        distance = distance + (values - current[field]).abs().fillna(span) / span
+    feasible["_distance_from_current"] = distance
+    feasible["_margin_sort"] = pd.to_numeric(feasible.get("envelope_margin_pkr_m"), errors="coerce").fillna(0.0)
+    return feasible.sort_values(["_distance_from_current", "_margin_sort"], ascending=[True, True]).iloc[0]
+
+
+def _configuration_row_text(row: pd.Series) -> str:
+    if row.empty:
+        return "No feasible tested configuration found."
+    margin = _pkr_m(row.get("envelope_margin_pkr_m"))
+    cost = _pkr_m(row.get("npv_tested_fiscal_cost_pkr_m", row.get("npv_gross_fiscal_cost_pkr_m")))
+    return (
+        f"{_package_display(row.get('instrument_package'))}; "
+        f"CAPEX rate {float(row.get('capex_deduction_rate', 0.0)):.2f}; "
+        f"annual cap {float(row.get('annual_cap_pkr_m', 0.0)):,.0f} PKR m; "
+        f"threshold {float(row.get('qualifying_threshold_pkr_m', 0.0)):,.0f} PKR m; "
+        f"utilization {float(row.get('utilization_rate', 0.0)):.0%}; "
+        f"pilot uptake {float(row.get('pilot_uptake_share', 0.0)):.0%}. "
+        f"Tested cost {cost}; margin {margin}."
+    )
+
+
 def _feasible_range_text(params: pd.DataFrame) -> str:
     if params.empty or "feasible_flag" not in params.columns:
         return "No feasible range calculated"
@@ -2924,12 +3058,25 @@ def _parameter_ranges_table(params: pd.DataFrame) -> pd.DataFrame:
         "npv_incremental_assessed_income_pkr_m": "Incremental assessed income (PKR m)",
         "fiscal_cost_per_incremental_income": "Cost per incremental income",
         "review_workload_hours": "Review workload (hours)",
+        "peak_annual_review_workload_hours": "Peak annual review hours",
+        "indicative_fte_requirement": "Annual FTE requirement",
         "duration_sunset": "Duration / sunset",
     }
     view = params[[c for c in columns if c in params.columns]].rename(columns=columns)
     if "Within envelope?" in view.columns:
         view["Within envelope?"] = view["Within envelope?"].apply(lambda value: "Yes" if bool(value) else "No")
+    if "Cost per incremental income" in view.columns:
+        view["Cost per incremental income"] = view["Cost per incremental income"].apply(_format_mixed_numeric)
     return _round_numeric(view.head(80))
+
+
+def _format_mixed_numeric(value: object) -> str:
+    try:
+        if pd.isna(value):
+            return "Not estimable"
+        return f"{float(value):,.4f}"
+    except (TypeError, ValueError):
+        return visible_text(value, "Not estimable")
 
 
 def _sensitivity_table(sensitivity: pd.DataFrame) -> pd.DataFrame:
@@ -3784,7 +3931,7 @@ def render_export_memo(
             ROOT / "outputs" / "sez_calibration_demo_outputs.xlsx",
             "sez_calibration_demo_outputs.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Workbook containing D6 assumptions, scenarios, annual enterprise outputs, portfolio summary, sensitivity, parameter ranges, readiness triage, validation flags, and D7 handoff sheets.",
+            "Workbook containing D6 assumptions, scenarios, annual enterprise outputs, portfolio summary, sensitivity, tested joint configurations, readiness triage, validation flags, and D7 handoff sheets.",
         ),
         (
             "Executive Triage Table CSV",
@@ -3815,11 +3962,11 @@ def render_export_memo(
             "Portfolio-level NPV fiscal-cost and tax-collection summary by scenario and additionality case.",
         ),
         (
-            "Calibration Parameter Ranges CSV",
+            "Tested Joint Configuration Frontier CSV",
             ROOT / "outputs" / "calibration_parameter_ranges.csv",
             "calibration_parameter_ranges.csv",
             "text/csv",
-            "Feasible parameter frontier outputs for rates, caps, thresholds, utilization, uptake, and additionality cases.",
+            "Tested joint configuration frontier for packages, rates, caps, thresholds, utilization, uptake, and additionality cases.",
         ),
         (
             "Calibration Model Readiness CSV",
