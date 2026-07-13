@@ -366,6 +366,21 @@ def test_pipeline_writes_d6_workbook_sheets(tmp_path: Path) -> None:
     assert (output_dir / "calibration_annual_enterprise.csv").stat().st_size > 0
     assert (output_dir / "calibration_portfolio_summary.csv").stat().st_size > 0
     assert (output_dir / "calibration_parameter_ranges.csv").stat().st_size > 0
+    assert (output_dir / "calibration_input_register.csv").stat().st_size > 0
+    assert (output_dir / "calibration_run_manifest.csv").stat().st_size > 0
+    register = result["frames"]["calibration_input_register"]
+    assert len(register) == 31
+    assert set(register["demo_coverage_status"]) == {
+        "Demonstrated",
+        "Partially demonstrated",
+        "Workflow demonstrated",
+        "Not demonstrated",
+    }
+    assert "VALIDATED" not in set(register["current_workflow_status"])
+    manifest = result["frames"]["calibration_run_manifest"]
+    assert manifest.loc[0, "run_id"].startswith("RUN-")
+    assert manifest.loc[0, "approval_state"] == "NOT_SUBMITTED - human review required"
+    assert manifest.loc[0, "publication_state"] == "SYNTHETIC_DEMO_ONLY"
     frontier = result["frames"]["calibration_parameter_ranges"]
     assert frontier["feasible_flag"].astype(bool).any()
     assert (~frontier["feasible_flag"].astype(bool)).any()
@@ -375,6 +390,8 @@ def test_pipeline_writes_d6_workbook_sheets(tmp_path: Path) -> None:
     workbook = openpyxl.load_workbook(output_dir / "sez_calibration_demo_outputs.xlsx", read_only=True)
     expected_sheets = {
         "00_read_me",
+        "01_input_register",
+        "02_run_manifest",
         "02_model_assumptions",
         "03_scenario_definitions",
         "04_annual_enterprise",

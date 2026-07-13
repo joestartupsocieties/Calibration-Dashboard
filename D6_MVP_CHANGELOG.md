@@ -2,6 +2,13 @@
 
 ## Final Focused Implementation Pass
 
+- Aligned the demo control layer to the 10 July 2026 Data and Decision Architecture Report.
+- Added a governed register covering all 31 report-defined input domains: 2 demonstrated, 20 partial, 4 workflow-only, and 5 not demonstrated.
+- Added a sequential readiness funnel, canonical case context, six hard gates, and critical evidence observations.
+- Added separate fiscal lenses and an explicit investor-viability gap rather than implying missing project cash flows were calculated.
+- Added a hash-bound run manifest with synthetic-only publication state and `NOT_SUBMITTED` approval state.
+- Framed Sol Ultra as an evidence-extraction and reconciliation assistant; deterministic code and named specialists retain calculation, validation, and decision authority.
+
 - Retitled the public app to **SEZ D6 Calibration Workbench**.
 - Corrected scenario semantics:
   - no-SEZ reference receives no incentive-caused additionality;

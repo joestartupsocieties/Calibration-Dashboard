@@ -6,3 +6,4 @@ outputs/*
 review_bundle*/
 deliverables/
 *.tmp
+.venv/

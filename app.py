@@ -36,7 +36,7 @@ from sez_calibration.ui_copy import (  # noqa: E402
 )
 
 
-APP_VERSION = "prototype-demo-v0.8.1"
+APP_VERSION = "prototype-demo-v0.8.2"
 WARNING_TEXT = NON_DECISION_STATEMENT
 ADDITIONALITY_NOTE = (
     "Reported production or construction is not treated as proof of incentive effectiveness. "
@@ -69,7 +69,7 @@ D6_DEFAULTS = {
 
 PAGES = [
     "Calibration Analysis",
-    "Readiness Triage",
+    "Input Readiness",
     "Case Calibration",
     "Evidence & Exports",
     "About / Limitations",
@@ -823,8 +823,9 @@ def apply_posture_defaults() -> None:
 
 def initialize_state() -> None:
     legacy_page_map = {
-        "Executive View": "Readiness Triage",
-        "Executive Triage": "Readiness Triage",
+        "Executive View": "Input Readiness",
+        "Executive Triage": "Input Readiness",
+        "Readiness Triage": "Input Readiness",
         "Zone Explorer": "Case Calibration",
         "Case Review": "Case Calibration",
         "Recommendation Engine": "Case Calibration",
@@ -2463,6 +2464,176 @@ def render_footer() -> None:
     )
 
 
+def input_readiness_counts(register: pd.DataFrame) -> dict[str, int]:
+    status = register.get("demo_coverage_status", pd.Series(dtype=object)).astype(str)
+    real_use = register.get("real_use_status", pd.Series(dtype=object)).astype(str)
+    return {
+        "total": int(len(register)),
+        "demonstrated": int(status.eq("Demonstrated").sum()),
+        "partial": int(status.eq("Partially demonstrated").sum()),
+        "workflow": int(status.eq("Workflow demonstrated").sum()),
+        "not_demonstrated": int(status.eq("Not demonstrated").sum()),
+        "blocking_real_use": int(real_use.str.contains("Blocking", case=False, na=False).sum()),
+    }
+
+
+def input_register_display_table(register: pd.DataFrame) -> pd.DataFrame:
+    columns = {
+        "required_input": "Required input",
+        "evidence_area": "Evidence area",
+        "demo_coverage_status": "Demo coverage",
+        "current_workflow_status": "Current workflow status",
+        "real_use_status": "Real-use status",
+        "pilot_priority": "Pilot priority",
+        "source_owner": "Source owner",
+        "validator": "Validator",
+        "period_unit": "Period / unit",
+        "use_in_calculation": "Use in calculation",
+        "field_mapping": "Current field mapping",
+        "mapped_fields_missing": "Mapped fields still missing",
+        "decision_consequence_if_missing": "Decision consequence if missing",
+        "next_action": "Next action",
+    }
+    available = [column for column in columns if column in register.columns]
+    return register[available].rename(columns=columns)
+
+
+def build_readiness_funnel(frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    readiness = frames.get("calibration_model_readiness", pd.DataFrame()).copy()
+    annual = frames.get("calibration_annual_enterprise", pd.DataFrame())
+    if readiness.empty:
+        return pd.DataFrame()
+
+    scope = readiness.copy()
+    if "cohort_scope" in scope.columns:
+        scope = scope[~scope["cohort_scope"].astype(str).str.upper().eq("EPZ")].copy()
+    index = scope.index
+
+    def passed(column: str) -> pd.Series:
+        return scope.get(column, pd.Series(False, index=index)).astype(str).str.lower().isin(["true", "1", "yes"])
+
+    identity = (
+        scope.get("zone_id", pd.Series("", index=index)).fillna("").astype(str).str.strip().ne("")
+        & scope.get("enterprise_id", pd.Series("", index=index)).fillna("").astype(str).str.strip().ne("")
+    )
+    legal = identity & passed("legal_ready")
+    compliance = legal & passed("compliance_ready")
+    minimum_data = compliance & passed("fiscal_ready") & passed("financial_evidence_complete")
+    calculated_ids = set(annual.get("enterprise_id", pd.Series(dtype=object)).dropna().astype(str))
+    calculated = minimum_data & scope.get("enterprise_id", pd.Series("", index=index)).astype(str).isin(calculated_ids)
+    counts = [len(scope), int(identity.sum()), int(legal.sum()), int(compliance.sum()), int(minimum_data.sum()), int(calculated.sum()), 0, 0]
+    stages = [
+        ("Synthetic SEZ population", "Canonical population scope"),
+        ("Identity reconciled", "Canonical zone-enterprise crosswalk"),
+        ("D4 legal gate passed", "Validated authority rights expiry and overlap"),
+        ("Compliance gate passed", "Developer and enterprise compliance or cure state"),
+        ("D5 minimum data ready", "Validated tax loss customs and qualifying-cost evidence"),
+        ("Scenario calculation available", "Reproducible S1-S4-style model run"),
+        ("Independent model validation", "Challenger reproduction and boundary testing"),
+        ("Authorized policy decision", "Competent legal fiscal and policy approval"),
+    ]
+    population = max(counts[0], 1)
+    rows: list[dict[str, object]] = []
+    previous = counts[0]
+    for (stage, requirement), count in zip(stages, counts):
+        rows.append(
+            {
+                "Stage": stage,
+                "Cases": count,
+                "Share of population": f"{count / population:.0%}",
+                "Held since prior stage": max(previous - count, 0),
+                "Exit requirement": requirement,
+                "Value at stake": "Pending validated D5 data",
+            }
+        )
+        previous = count
+    return pd.DataFrame(rows)
+
+
+def case_gate_table(
+    rec: pd.Series,
+    readiness_rows: pd.DataFrame,
+    current_decision: dict[str, object],
+) -> pd.DataFrame:
+    row = readiness_rows.iloc[0] if not readiness_rows.empty else pd.Series(dtype=object)
+
+    def ready(field: str) -> bool:
+        return str(row.get(field, "false")).lower() in {"true", "1", "yes"}
+
+    model_ready = ready("model_ready")
+    identity_ready = bool(str(rec.get("zone_id", "")).strip()) and bool(str(row.get("enterprise_id", "")).strip())
+    return pd.DataFrame(
+        [
+            {
+                "Gate": "Identity",
+                "Current status": "Synthetic mapping complete; source validation required" if identity_ready else "Blocked",
+                "Exit requirement": "BOI/FBR canonical crosswalk and effective-dated identity validation",
+                "Owner": "BOI / FBR identity steward",
+            },
+            {
+                "Gate": "D4 legal",
+                "Current status": "Synthetic pass; D4 validation required" if ready("legal_ready") else "Blocked",
+                "Exit requirement": "Validate statutory authority rights expiry overlap and remedies",
+                "Owner": "Legal reviewer / BOI / SEZA",
+            },
+            {
+                "Gate": "Compliance",
+                "Current status": "Synthetic pass; event evidence required" if ready("compliance_ready") else "Blocked",
+                "Exit requirement": "Validate obligation default cure and enforcement events",
+                "Owner": "SEZA / FBR / legal reviewer",
+            },
+            {
+                "Gate": "D5 minimum data",
+                "Current status": "Synthetic model inputs present" if ready("fiscal_ready") and ready("financial_evidence_complete") else "Blocked",
+                "Exit requirement": "Validate returns losses customs accounts and qualifying expenditure",
+                "Owner": "FBR / Finance / enterprise auditor",
+            },
+            {
+                "Gate": "Auditability",
+                "Current status": "Workflow defined; claim evidence unvalidated" if model_ready else "Blocked",
+                "Exit requirement": "Invoices asset register payments location checks and reviewer sign-off",
+                "Owner": "FBR / authorized auditor",
+            },
+            {
+                "Gate": "Fiscal envelope",
+                "Current status": (
+                    f"{current_decision.get('status', 'Not assessed')} for selected portfolio configuration"
+                    if model_ready
+                    else "Not assessed"
+                ),
+                "Exit requirement": "D5-approved envelope definition and independently reproduced run",
+                "Owner": "Finance Division / FBR / fiscal modeller",
+            },
+        ]
+    )
+
+
+def case_evidence_table(
+    rec: pd.Series,
+    enterprise_rows: pd.DataFrame,
+) -> pd.DataFrame:
+    enterprise = enterprise_rows.iloc[0] if not enterprise_rows.empty else pd.Series(dtype=object)
+    identity = f"{display_value(rec.get('zone_id'))} / {display_value(enterprise.get('enterprise_id'))}"
+    qualifying = (
+        f"CAPEX {_pkr_m(enterprise.get('eligible_capex_pkr_m'))}; "
+        f"R&D {_pkr_m(enterprise.get('eligible_rd_pkr_m'))}; "
+        f"training {_pkr_m(enterprise.get('eligible_training_pkr_m'))}"
+    )
+    rows = [
+        ("Canonical identity", identity, "Synthetic zone and enterprise tables", "Current snapshot / identifier", "BOI / FBR identity steward", "STANDARDIZED", "Identity gate"),
+        ("Legal risk", display_value(rec.get("legal_risk_level")), "Synthetic legal/fiscal table", "Current snapshot / status", "D4 legal reviewer", "STANDARDIZED", "D4 legal gate"),
+        ("Compliance", display_value(rec.get("compliance_status")), "Synthetic legal/fiscal table", "Current snapshot / status", "SEZA / FBR / legal", "STANDARDIZED", "Compliance gate"),
+        ("Fiscal exposure", f"{display_value(rec.get('fiscal_exposure_level'))}; {display_value(rec.get('fiscal_data_status'))}", "Synthetic enterprise summary", "2026 / status", "FBR / Finance", "STANDARDIZED", "D5 minimum-data gate"),
+        ("Qualifying expenditure", qualifying, "Synthetic enterprise summary", "2026 / PKR million", "FBR / enterprise auditor", "STANDARDIZED", "Deduction base and envelope"),
+        ("Additionality and counterfactual", f"{display_value(rec.get('additionality_confidence'))}; {display_value(rec.get('counterfactual_status'))}", "Synthetic enterprise summary", "Current scenario / category", "REMIT / independent reviewer", "STANDARDIZED", "Behavioural scenario"),
+        ("Project cash flow and hurdle rate", "Not provided", "No current input", "Project life / cash flow and rate", "Enterprise / independent modeller", "NOT_REQUESTED", "Investor viability"),
+    ]
+    return pd.DataFrame(
+        rows,
+        columns=["Evidence item", "Asserted value", "Source", "Period / unit", "Validator", "Workflow status", "Affected calculation or gate"],
+    )
+
+
 def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[str, Any]) -> None:
     st.markdown("### One-Decision Calibration View")
     st.caption(
@@ -2484,6 +2655,8 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
     verification = frames.get("calibration_verification_rules", pd.DataFrame())
     readiness = frames.get("calibration_model_readiness", pd.DataFrame())
     d7 = frames.get("calibration_d7_handoff", pd.DataFrame())
+    input_register = frames.get("calibration_input_register", pd.DataFrame())
+    run_manifest = frames.get("calibration_run_manifest", pd.DataFrame())
 
     if annual.empty or portfolio.empty:
         st.warning("D6 annual outputs are blocked until enterprise-level financial evidence is available for calculation.")
@@ -2514,6 +2687,45 @@ def render_calibration_analysis(frames: dict[str, pd.DataFrame], summary: dict[s
         metric_card("Envelope margin", _pkr_m(margin), "Positive means within envelope")
     with c5:
         metric_card("Envelope status", current_status, "For the selected joint configuration")
+
+    run_id = (
+        display_value(run_manifest.get("run_id", pd.Series(["Not generated"])).iloc[0])
+        if not run_manifest.empty
+        else "Not generated"
+    )
+    readiness_counts = input_readiness_counts(input_register)
+    st.caption(
+        f"Run {run_id} | {readiness_counts['total']} report-defined input domains mapped | "
+        "approval state: not submitted; human review required"
+    )
+
+    st.markdown("#### Fiscal decision lenses")
+    lens_columns = st.columns(3)
+    with lens_columns[0]:
+        summary_card("Static revenue foregone", "Not separately calculated", "FBR benchmark reconciliation required")
+        summary_card(
+            "Direct tax expenditure output",
+            _pkr_m(cost_row.get("npv_tax_expenditure_pkr_m")),
+            "Synthetic model output; not official revenue foregone",
+        )
+    with lens_columns[1]:
+        summary_card(
+            "Behavioural / counterfactual effect",
+            _pkr_m(cost_row.get("npv_incremental_assessed_income_pkr_m")),
+            "Driven by the selected additionality assumption",
+        )
+        summary_card(
+            "Administration cost",
+            _pkr_m(cost_row.get("npv_admin_cost_pkr_m")),
+            "Synthetic review and audit workload assumptions",
+        )
+    with lens_columns[2]:
+        summary_card(
+            "Cash fiscal impact vs reference",
+            _pkr_m(cost_row.get("npv_fiscal_impact_vs_reference_pkr_m")),
+            "Separate from reported tax expenditure",
+        )
+        summary_card("Investor viability", "Not calculated", "Project cash flow and hurdle-rate evidence missing")
 
     scenario_options = _scenario_options(scenario_defs, portfolio)
     col1, col2, col3 = st.columns([2, 1, 1])
@@ -2634,6 +2846,9 @@ def render_case_calibration(
     readiness = frames.get("calibration_model_readiness", pd.DataFrame()).copy()
     inputs = frames.get("calibration_enterprise_inputs", pd.DataFrame()).copy()
     annual = frames.get("calibration_annual_enterprise", pd.DataFrame()).copy()
+    zones = frames.get("zones", pd.DataFrame()).copy()
+    portfolio = frames.get("calibration_portfolio_summary", pd.DataFrame()).copy()
+    run_manifest = frames.get("calibration_run_manifest", pd.DataFrame()).copy()
     if recs.empty:
         st.info("No case records are available.")
         return
@@ -2650,6 +2865,13 @@ def render_case_calibration(
     rec = recs[recs["zone_id"].astype(str).eq(str(selected_zone_id))].iloc[0]
     enterprise_rows = inputs[inputs["zone_id"].astype(str).eq(str(selected_zone_id))] if not inputs.empty else pd.DataFrame()
     readiness_rows = readiness[readiness["zone_id"].astype(str).eq(str(selected_zone_id))] if not readiness.empty else pd.DataFrame()
+    zone_rows = zones[zones["zone_id"].astype(str).eq(str(selected_zone_id))] if not zones.empty else pd.DataFrame()
+    enterprise = enterprise_rows.iloc[0] if not enterprise_rows.empty else pd.Series(dtype=object)
+    zone = zone_rows.iloc[0] if not zone_rows.empty else pd.Series(dtype=object)
+    manifest = run_manifest.iloc[0] if not run_manifest.empty else pd.Series(dtype=object)
+    base_portfolio = portfolio[portfolio.get("additionality_case", pd.Series(dtype=object)).astype(str).eq("base")]
+    current_decision = _current_joint_decision(_portfolio_row(base_portfolio, "cost_based_regime"))
+    gate_table = case_gate_table(rec, readiness_rows, current_decision)
 
     st.markdown(
         "<div class='zone-header-card'>"
@@ -2664,6 +2886,26 @@ def render_case_calibration(
         unsafe_allow_html=True,
     )
 
+    package_labels = {
+        "full": "CAPEX / R&D / training package",
+        "capex_only": "CAPEX-only package",
+        "rd_training": "R&D / training package",
+    }
+    context = pd.DataFrame(
+        [
+            ("Zone", display_value(rec.get("zone_name"))),
+            ("Developer / operator", display_value(zone.get("developer_name"))),
+            ("Enterprise / cohort", f"{display_value(enterprise.get('enterprise_name'))} / {display_value(enterprise.get('cohort_scope'))}"),
+            ("Investment project", "Not represented in the current thin slice"),
+            ("Candidate package", package_labels.get(st.session_state.get("d6_instrument_package", "full"), "Not selected")),
+            ("Effective period", "2026-2035 synthetic projection"),
+            ("Selected run", display_value(manifest.get("run_id"))),
+        ],
+        columns=["Case field", "Current value"],
+    )
+    st.markdown("#### Canonical case context")
+    st.dataframe(context, width="stretch", hide_index=True)
+
     cols = st.columns(4)
     with cols[0]:
         summary_card("Review pathway", treatment_label(rec.get("recommended_treatment")), "Provisional")
@@ -2671,10 +2913,33 @@ def render_case_calibration(
         model_ready = bool(readiness_rows["model_ready"].astype(str).str.lower().eq("true").any()) if not readiness_rows.empty else False
         summary_card("D6 model status", "Synthetic model-ready" if model_ready else "Blocked", "No final treatment")
     with cols[2]:
-        gates = [gate for gate in split_reason_codes(rec.get("hard_gates_triggered")) if gate.strip().lower() not in {"none", "not available"}]
-        summary_card("Open gates", len(gates), "Validation items")
+        open_gate_count = len(gate_table)
+        summary_card("Open gates", open_gate_count, "Sequential validation items")
     with cols[3]:
         summary_card("Validation owner", rec.get("validator_owner"), "Lead reviewer")
+
+    status_columns = st.columns(2)
+    with status_columns[0]:
+        summary_card(
+            "Approval state",
+            display_value(manifest.get("approval_state")).replace("NOT_SUBMITTED", "Not submitted"),
+            "Separate from analytical output",
+        )
+    with status_columns[1]:
+        summary_card(
+            "Investor viability",
+            "Not calculated",
+            "Project cash-flow and hurdle-rate inputs are missing",
+        )
+
+    st.markdown("#### Six hard gates")
+    st.dataframe(gate_table, width="stretch", hide_index=True)
+
+    st.markdown("#### Critical evidence observations")
+    st.dataframe(case_evidence_table(rec, enterprise_rows), width="stretch", hide_index=True)
+    st.caption(
+        "These are asserted synthetic observations. No value shown here is marked VALIDATED for policy use."
+    )
 
     st.markdown("#### Case memo")
     memo_cols = st.columns([2, 1])
@@ -2740,6 +3005,16 @@ def render_evidence_exports(
     with tabs[0]:
         render_data_confidence_mvp(frames, summary)
     with tabs[1]:
+        st.markdown("#### Reproducible run manifest")
+        st.caption(
+            "The run identity binds the synthetic data, legal table, assumptions, weights, rules, input register, "
+            "model code, and scenario overrides. Approval remains not submitted."
+        )
+        st.dataframe(
+            friendly_dataframe(frames.get("calibration_run_manifest", pd.DataFrame())),
+            width="stretch",
+            hide_index=True,
+        )
         st.markdown("#### Model readiness")
         st.dataframe(friendly_dataframe(frames.get("calibration_model_readiness", pd.DataFrame())), width="stretch", hide_index=True)
         st.markdown("#### Enterprise-to-zone reconciliation")
@@ -3117,7 +3392,105 @@ def _round_numeric(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def render_executive_view(frames: dict[str, pd.DataFrame], summary: dict[str, Any], display_recommendations: pd.DataFrame) -> None:
+def render_executive_view(
+    frames: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+    display_recommendations: pd.DataFrame,
+) -> None:
+    st.markdown("### D6 Input Readiness")
+    st.caption(
+        "The report-defined evidence chain requires a source owner, period, unit, validator, model use, "
+        "decision consequence, and next action for every input domain."
+    )
+    register = frames.get("calibration_input_register", pd.DataFrame()).copy()
+    if register.empty:
+        st.warning("The D6 input requirements register is unavailable. Run the pipeline before using this view.")
+        return
+
+    counts = input_readiness_counts(register)
+    columns = st.columns(5)
+    metrics = [
+        ("Required input domains", counts["total"], "Report Tables 5-9"),
+        ("Demonstrated", counts["demonstrated"], "Executable synthetic workflow"),
+        ("Partially demonstrated", counts["partial"], "Mapped but incomplete"),
+        ("Workflow only", counts["workflow"], "Gate exists; evidence pending"),
+        ("Not demonstrated", counts["not_demonstrated"], "Absent from the thin slice"),
+    ]
+    for column, (label, value, note) in zip(columns, metrics):
+        with column:
+            metric_card(label, value, note)
+
+    callout_card(
+        "Readiness judgment",
+        "The workbench credibly demonstrates a governed synthetic calculation path. Real policy use remains "
+        f"blocked by {counts['blocking_real_use']} domains requiring D4 legal evidence, FBR/customs records, "
+        "enterprise accounts, or counterfactual validation.",
+    )
+
+    st.markdown("#### Sequential readiness funnel")
+    funnel = build_readiness_funnel(frames)
+    st.dataframe(funnel, width="stretch", hide_index=True)
+    st.caption(
+        "A case advances only when the prior gate is met. Synthetic passes demonstrate workflow behavior; they "
+        "are not specialist validation or policy approval."
+    )
+
+    register_tab, pathway_tab = st.tabs(["Governed input register", "Zone readiness pathways"])
+    with register_tab:
+        f1, f2, f3 = st.columns(3)
+        evidence_options = ["All evidence areas"] + sorted(register["evidence_area"].astype(str).unique().tolist())
+        coverage_options = ["All coverage statuses"] + sorted(register["demo_coverage_status"].astype(str).unique().tolist())
+        priority_options = ["All pilot priorities"] + sorted(register["pilot_priority"].astype(str).unique().tolist())
+        evidence_filter = f1.selectbox("Evidence area", evidence_options, key="input_readiness_evidence")
+        coverage_filter = f2.selectbox("Demo coverage", coverage_options, key="input_readiness_coverage")
+        priority_filter = f3.selectbox("Pilot priority", priority_options, key="input_readiness_priority")
+
+        filtered = register.copy()
+        if evidence_filter != "All evidence areas":
+            filtered = filtered[filtered["evidence_area"].astype(str).eq(evidence_filter)]
+        if coverage_filter != "All coverage statuses":
+            filtered = filtered[filtered["demo_coverage_status"].astype(str).eq(coverage_filter)]
+        if priority_filter != "All pilot priorities":
+            filtered = filtered[filtered["pilot_priority"].astype(str).eq(priority_filter)]
+        st.dataframe(input_register_display_table(filtered), width="stretch", height=520, hide_index=True)
+        st.caption(
+            "Field mapping means a slot exists in the current code or synthetic data. It does not mean the value "
+            "has been validated for policy use."
+        )
+
+        g1, g2, g3 = st.columns(3)
+        with g1:
+            output_card(
+                "Already credible for a demo",
+                "Fiscal identities, joint configuration testing, annual and NPV outputs, assumptions, weights, verification burden, and D7 triggers.",
+            )
+        with g2:
+            output_card(
+                "Still blocked for real use",
+                "D4 rights and clauses; FBR/customs data; tax-loss stocks; audited cost dates; comparator, relocation, and additionality evidence.",
+            )
+        with g3:
+            output_card(
+                "Limited-pilot objective",
+                "Populate the register for one or two cases, assign validators, resolve high-impact gaps, and produce specialist-ready extracts.",
+            )
+
+        with st.expander("How Sol Ultra supports the evidence workflow", expanded=False):
+            st.markdown(
+                "Sol Ultra can extract candidate observations and exact source locators, propose entity aliases, "
+                "identify unit or period conflicts, and draft validation notes. Every output enters as asserted and "
+                "unvalidated. Deterministic code performs fiscal calculations; named legal, fiscal, tax, and policy "
+                "reviewers validate facts and authorize decisions."
+            )
+    with pathway_tab:
+        _render_zone_readiness_triage(frames, summary, display_recommendations)
+
+
+def _render_zone_readiness_triage(
+    frames: dict[str, pd.DataFrame],
+    summary: dict[str, Any],
+    display_recommendations: pd.DataFrame,
+) -> None:
     recommendations = frames["recommendations"]
     triage = executive_triage_table(recommendations)
 
@@ -4088,6 +4461,17 @@ def render_about_limitations(summary: dict[str, Any]) -> None:
             "fiscal estimate, tax calculation, incentive clearance, or replacement for BOI, FBR, Finance Division, SEZA, "
             "legal counsel, IMF review, programme review, or human review."
         )
+    with st.expander("Data and decision architecture alignment", expanded=False):
+        st.write(
+            "The demo maps the report's 31 input domains and exposes the governed chain from asserted observation "
+            "to validation gate to reproducible run to human decision. Production use still requires effective-dated "
+            "source records, clause-level legal facts, FBR/customs reconciliation, project cash flows, independent "
+            "model validation, maker-checker approval, and an authorized secure environment."
+        )
+        st.write(
+            "Sol Ultra may assist with extraction, crosswalks, conflict detection, and validation-note drafting. It "
+            "does not validate its own output or make legal, fiscal, tax, calibration, or approval decisions."
+        )
 
     with st.expander("Run summary", expanded=False):
         st.dataframe(pd.DataFrame([summary]), width="stretch", hide_index=True)
@@ -4959,6 +5343,8 @@ def render_export(
         ("data_confidence_scores.csv", "Download confidence scores"),
         ("activity_classification.csv", "Download activity classification"),
         ("field_completeness.csv", "Download field completeness"),
+        ("calibration_input_register.csv", "Download D6 input requirements register"),
+        ("calibration_run_manifest.csv", "Download calibration run manifest"),
         ("summary.json", "Download summary JSON"),
         ("sez_calibration_demo_outputs.xlsx", "Download Excel output package"),
     ]
@@ -4993,7 +5379,7 @@ page = render_header(recommendations, summary)
 
 if page == "Calibration Analysis":
     render_calibration_analysis(frames, summary)
-elif page == "Readiness Triage":
+elif page == "Input Readiness":
     render_executive_view(frames, summary, display_recommendations)
 elif page == "Case Calibration":
     render_case_calibration(frames, summary, reason_codes, display_recommendations)

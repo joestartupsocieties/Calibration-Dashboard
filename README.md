@@ -6,7 +6,7 @@ This repository is scoped to a demoable Pakistan SEZ D6 calibration MVP. It uses
 
 ## Demo Flow
 
-`synthetic enterprise archetype -> model-readiness status -> D5 fiscal envelope -> joint package/rate/cap/threshold/utilization/uptake controls -> current envelope decision -> nearest feasible tested configuration -> additionality sensitivity -> verification requirements -> D7 recalibration triggers -> export`
+`31-domain input register -> sequential D4/D5 readiness gates -> synthetic enterprise archetype -> joint package/rate/cap/threshold/utilization/uptake controls -> fiscal-envelope decision -> nearest feasible tested configuration -> additionality sensitivity -> verification and D7 triggers -> hash-bound run manifest -> export`
 
 The controlled decision question is:
 
@@ -35,6 +35,10 @@ The app opens to **Calibration Analysis** in **Synthetic demo view**.
 - Scaled frontier fiscal cost, incremental income, administrative cost, workload, and annual FTE consistently by pilot uptake.
 - Added administrative workload and cost calculations from claim count, review hours, audit sample rate, and cost per review hour.
 - Added operational D7 recalibration triggers.
+- Added the 31 input domains from the Data and Decision Architecture Report with owners, validators, workflow state, field mapping, decision consequence, and next action.
+- Added a sequential population-to-decision readiness funnel and a six-gate case record.
+- Added separated fiscal decision lenses and an explicit investor-viability `Not calculated` state where project cash-flow evidence is missing.
+- Added a reproducible run manifest binding data, legal, assumptions, weights, rules, input requirements, model code, and scenario overrides.
 
 ## Data
 
@@ -57,6 +61,8 @@ The pipeline writes CSV/JSON/XLSX outputs to `outputs/`, including:
 
 - `calibration_enterprise_inputs.csv`
 - `calibration_model_readiness.csv`
+- `calibration_input_register.csv`
+- `calibration_run_manifest.csv`
 - `calibration_annual_enterprise.csv`
 - `calibration_portfolio_summary.csv`
 - `calibration_sensitivity.csv`
@@ -65,19 +71,18 @@ The pipeline writes CSV/JSON/XLSX outputs to `outputs/`, including:
 - `calibration_d7_handoff.csv`
 - `sez_calibration_demo_outputs.xlsx`
 
-The Excel workbook includes assumptions, scenario definitions, annual enterprise outputs, portfolio summary, tested joint-configuration frontier, sensitivity, verification rules, readiness triage, reconciliation, validation flags, D7 handoff, reason codes, and limitations.
+The Excel workbook includes the input register, run manifest, assumptions, scenario definitions, annual enterprise outputs, portfolio summary, tested joint-configuration frontier, sensitivity, verification rules, readiness triage, reconciliation, validation flags, D7 handoff, reason codes, and limitations.
 
 ## Demo Script
 
-1. Open **Calibration Analysis** and state the decision question.
-2. Select the instrument package and show the illustrative D5 fiscal ceiling.
-3. Adjust CAPEX rate, annual cap, threshold, utilization, or pilot uptake.
-4. Show whether the current joint configuration is inside or outside the envelope.
-5. Point to the nearest feasible tested joint configuration and then open the frontier table.
-6. Show low/base/high additionality sensitivity.
-7. Open verification requirements and D7 recalibration triggers.
-8. Use **Case Calibration** and **Evidence & Exports** only as supporting evidence pages.
-9. Close with **About / Limitations**: synthetic proof of concept, human review required, D4/D5 validation required, no final policy decision.
+1. Open **Input Readiness** and show the 31-domain register plus the sequential readiness funnel.
+2. Open **Case Calibration** and show canonical context, six gates, asserted evidence, and approval state.
+3. Open **Calibration Analysis** and state the controlled fiscal-envelope decision question.
+4. Adjust one joint parameter and show the current and nearest feasible tested configurations.
+5. Point to the separated fiscal lenses and the investor-viability `Not calculated` state.
+6. Switch low/base/high additionality and open the verification and D7 trigger sections.
+7. Open **Evidence & Exports** to show the run manifest and governed workbook.
+8. Close with **About / Limitations**: synthetic only, D4/D5 and independent review required, no final policy decision.
 
 ## Documentation
 
@@ -85,5 +90,7 @@ The Excel workbook includes assumptions, scenario definitions, annual enterprise
 - `docs/ECONOMIC_COHERENCE_CHECKS.md`
 - `docs/DEMO_DECISION_TRACE.md`
 - `docs/HOW_TO_DEMO.md`
+- `docs/DATA_REQUIREMENTS_FIT_GAP.md`
+- `docs/REMIT_DEMO_RUNBOOK.md`
 - `LIMITATIONS.md`
 - `D6_MVP_CHANGELOG.md`

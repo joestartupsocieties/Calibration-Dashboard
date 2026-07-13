@@ -94,19 +94,43 @@ def run_calibration_model(
     assumptions_frame = _assumptions_frame_with_overrides(assumptions_frame, assumptions, scenario)
     scenario_definitions = build_scenario_definitions(assumptions)
     verification = _load_verification_requirements(verification_path)
+    input_register = build_calibration_input_register(
+        project_root,
+        zones,
+        recommendations,
+        assumptions_frame,
+        verification,
+    )
 
     if not enterprise_path.exists():
         status = "missing_enterprise_data_blocked" if data_profile != "synthetic" else "synthetic_enterprise_data_missing"
-        return _blocked_frames(status, assumptions_frame, scenario_definitions, verification)
+        return _blocked_frames(status, assumptions_frame, scenario_definitions, verification, input_register=input_register)
 
     enterprises_raw = pd.read_csv(enterprise_path)
     weights = _load_weights(weights_path)
     enterprises = prepare_enterprise_inputs(enterprises_raw, weights, zones, recommendations, assumptions)
+    input_register = build_calibration_input_register(
+        project_root,
+        zones,
+        recommendations,
+        assumptions_frame,
+        verification,
+        enterprises,
+        weights,
+    )
     readiness = build_model_readiness(enterprises)
     evidence_ready = enterprises[enterprises["evidence_model_ready"].astype(bool)].copy()
 
     if evidence_ready.empty:
-        return _blocked_frames("no_synthetic_model_ready_enterprises", assumptions_frame, scenario_definitions, verification, enterprises, readiness)
+        return _blocked_frames(
+            "no_synthetic_model_ready_enterprises",
+            assumptions_frame,
+            scenario_definitions,
+            verification,
+            enterprises,
+            readiness,
+            input_register,
+        )
 
     annual = build_annual_results(evidence_ready, assumptions)
     zone_aggregation = build_zone_aggregation(annual)
@@ -131,6 +155,7 @@ def run_calibration_model(
         "calibration_reconciliation": reconciliation,
         "calibration_model_readiness": readiness,
         "calibration_excluded_records": excluded,
+        "calibration_input_register": input_register,
     }
 
 
@@ -251,6 +276,46 @@ def build_model_readiness(enterprises: pd.DataFrame) -> pd.DataFrame:
         "blocked_reason",
     ]
     return enterprises[[c for c in cols if c in enterprises.columns]].copy()
+
+
+def build_calibration_input_register(
+    project_root: Path,
+    zones: pd.DataFrame,
+    recommendations: pd.DataFrame,
+    assumptions: pd.DataFrame,
+    verification: pd.DataFrame,
+    enterprises: pd.DataFrame | None = None,
+    weights: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    path = Path(project_root) / "config" / "d6_input_requirements_v0_1.csv"
+    if not path.exists():
+        return pd.DataFrame()
+
+    register = pd.read_csv(path).fillna("")
+    field_universe: set[str] = set()
+    for frame in [zones, recommendations, assumptions, verification, enterprises, weights]:
+        if frame is not None:
+            field_universe.update(str(column) for column in frame.columns)
+    if "assumption_key" in assumptions.columns:
+        field_universe.update(assumptions["assumption_key"].dropna().astype(str))
+
+    def mapping(required: object) -> pd.Series:
+        fields = [field.strip() for field in str(required).split("|") if field.strip()]
+        mapped = [field for field in fields if field in field_universe]
+        missing = [field for field in fields if field not in field_universe]
+        return pd.Series(
+            {
+                "mapped_field_count": len(mapped),
+                "required_field_count": len(fields),
+                "field_mapping": f"{len(mapped)}/{len(fields)} fields mapped",
+                "mapped_fields_missing": " | ".join(missing),
+            }
+        )
+
+    register = pd.concat([register, register["required_fields"].apply(mapping)], axis=1)
+    register["data_basis"] = "Synthetic demo only"
+    register["human_validation_status"] = "Required"
+    return register
 
 
 def build_annual_results(enterprises: pd.DataFrame, assumptions: CalibrationAssumptions) -> pd.DataFrame:
@@ -955,6 +1020,7 @@ def _blocked_frames(
     verification: pd.DataFrame,
     enterprises: pd.DataFrame | None = None,
     readiness: pd.DataFrame | None = None,
+    input_register: pd.DataFrame | None = None,
 ) -> dict[str, pd.DataFrame]:
     status_df = pd.DataFrame(
         [
@@ -980,6 +1046,7 @@ def _blocked_frames(
         "calibration_reconciliation": empty,
         "calibration_model_readiness": readiness if readiness is not None else status_df,
         "calibration_excluded_records": empty,
+        "calibration_input_register": input_register if input_register is not None else empty,
     }
 
 

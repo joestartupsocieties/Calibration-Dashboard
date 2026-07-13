@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +31,8 @@ REQUIRED_OUTPUTS = [
     "calibration_enterprise_inputs.csv",
     "calibration_scenario_definitions.csv",
     "calibration_model_readiness.csv",
+    "calibration_input_register.csv",
+    "calibration_run_manifest.csv",
     "calibration_excluded_records.csv",
     "calibration_annual_enterprise.csv",
     "calibration_zone_aggregation.csv",
@@ -67,6 +72,12 @@ def run_pipeline(
         recommendations,
         data_profile=str(ingest_metadata.get("data_profile", "synthetic")),
         scenario=scenario,
+    )
+    calibration_frames["calibration_run_manifest"] = build_run_manifest(
+        root,
+        profile_data_dir,
+        ingest_metadata,
+        scenario or {},
     )
     reason_codes = load_reason_codes(config_dir / "reason_codes_v0_5_lite.yaml")
     explanations = build_recommendation_explanations(recommendations, reason_codes)
@@ -119,6 +130,8 @@ def run_pipeline(
         write_csv(frames["calibration_enterprise_inputs"], output_dir / "calibration_enterprise_inputs.csv")
         write_csv(frames["calibration_scenario_definitions"], output_dir / "calibration_scenario_definitions.csv")
         write_csv(frames["calibration_model_readiness"], output_dir / "calibration_model_readiness.csv")
+        write_csv(frames["calibration_input_register"], output_dir / "calibration_input_register.csv")
+        write_csv(frames["calibration_run_manifest"], output_dir / "calibration_run_manifest.csv")
         write_csv(frames["calibration_excluded_records"], output_dir / "calibration_excluded_records.csv")
         write_csv(frames["calibration_annual_enterprise"], output_dir / "calibration_annual_enterprise.csv")
         write_csv(frames["calibration_zone_aggregation"], output_dir / "calibration_zone_aggregation.csv")
@@ -133,6 +146,70 @@ def run_pipeline(
         export_excel(output_dir / "sez_calibration_demo_outputs.xlsx", summary, frames, reason_codes)
 
     return {"summary": summary, "frames": frames, "output_dir": output_dir}
+
+
+def build_run_manifest(
+    root: Path,
+    profile_data_dir: Path,
+    ingest_metadata: dict[str, Any],
+    scenario: dict[str, Any],
+) -> pd.DataFrame:
+    input_path = Path(str(ingest_metadata.get("input_file", "")))
+    files = {
+        "zone_data": input_path,
+        "legal_fiscal": profile_data_dir / "legal_fiscal_placeholders.csv",
+        "enterprise_data": profile_data_dir / "synthetic_enterprise_summary.csv",
+        "sample_weights": profile_data_dir / "synthetic_enterprise_weights.csv",
+        "assumptions": profile_data_dir / "synthetic_calibration_assumptions.csv",
+        "verification_rules": profile_data_dir / "synthetic_verification_requirements.csv",
+        "reason_codes": root / "config" / "reason_codes_v0_5_lite.yaml",
+        "input_requirements": root / "config" / "d6_input_requirements_v0_1.csv",
+        "model_code": root / "src" / "sez_calibration" / "calibration_model.py",
+    }
+    hashes = {name: _sha256_file(path) for name, path in files.items()}
+    scenario_hash = hashlib.sha256(
+        json.dumps(scenario, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    run_hash = _combined_hash([*hashes.values(), scenario_hash, CALIBRATION_MODEL_VERSION])
+    source_manifest = " | ".join(f"{name}:{value[:12]}" for name, value in hashes.items())
+    return pd.DataFrame(
+        [
+            {
+                "run_id": f"RUN-{run_hash[:16].upper()}",
+                "data_snapshot_id": f"DATA-{_combined_hash([hashes['zone_data'], hashes['enterprise_data']])[:16].upper()}",
+                "legal_snapshot_id": f"LEGAL-{hashes['legal_fiscal'][:16].upper()}",
+                "assumption_set_id": f"ASSUMP-{hashes['assumptions'][:16].upper()}",
+                "sample_weight_version": f"WEIGHT-{hashes['sample_weights'][:16].upper()}",
+                "ruleset_version": f"RULE-{_combined_hash([hashes['reason_codes'], hashes['verification_rules']])[:16].upper()}",
+                "input_requirement_version": f"INPUT-{hashes['input_requirements'][:16].upper()}",
+                "model_version": CALIBRATION_MODEL_VERSION,
+                "model_code_hash": hashes["model_code"],
+                "scenario_override_hash": scenario_hash,
+                "data_profile": str(ingest_metadata.get("data_profile", "synthetic")),
+                "data_state": "STANDARDIZED synthetic observations; not VALIDATED",
+                "model_qa_state": "Generated; independent model validation pending",
+                "approval_state": "NOT_SUBMITTED - human review required",
+                "publication_state": "SYNTHETIC_DEMO_ONLY",
+                "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                "source_manifest": source_manifest,
+            }
+        ]
+    )
+
+
+def _sha256_file(path: Path) -> str:
+    if not path or not path.exists() or not path.is_file():
+        return hashlib.sha256(b"missing").hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _combined_hash(parts: list[str]) -> str:
+    payload = "|".join(str(part) for part in parts)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def build_audit_flags(issues: pd.DataFrame, contradictions: pd.DataFrame, recommendations: pd.DataFrame) -> pd.DataFrame:
@@ -173,6 +250,7 @@ def build_summary(
     readiness = calibration_frames.get("calibration_model_readiness", pd.DataFrame())
     annual = calibration_frames.get("calibration_annual_enterprise", pd.DataFrame())
     parameter_ranges = calibration_frames.get("calibration_parameter_ranges", pd.DataFrame())
+    run_manifest = calibration_frames.get("calibration_run_manifest", pd.DataFrame())
     model_ready_count = 0
     if not readiness.empty and "model_ready" in readiness.columns:
         model_ready_count = int(readiness["model_ready"].astype(bool).sum())
@@ -190,6 +268,11 @@ def build_summary(
         "calibration_annual_row_count": int(len(annual)),
         "calibration_scenario_count": int(portfolio["scenario_id"].nunique()) if not portfolio.empty and "scenario_id" in portfolio.columns else 0,
         "calibration_parameter_range_count": int(len(parameter_ranges)),
+        "calibration_run_id": (
+            str(run_manifest["run_id"].iloc[0])
+            if not run_manifest.empty and "run_id" in run_manifest.columns
+            else "Not generated"
+        ),
         "title": "SEZ D6 Calibration Workbench",
         "zone_records_loaded": int(len(zones)),
         "detected_zone_profile_records_from_source_digest": 35,
@@ -247,6 +330,8 @@ def export_excel(path: Path, summary: dict[str, Any], frames: dict[str, pd.DataF
 
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         read_me.to_excel(writer, sheet_name="00_read_me", index=False)
+        frames.get("calibration_input_register", pd.DataFrame()).to_excel(writer, sheet_name="01_input_register", index=False)
+        frames.get("calibration_run_manifest", pd.DataFrame()).to_excel(writer, sheet_name="02_run_manifest", index=False)
         frames.get("calibration_enterprise_inputs", pd.DataFrame()).to_excel(writer, sheet_name="01_raw_enterprise_inputs", index=False)
         frames.get("calibration_assumptions", pd.DataFrame()).to_excel(writer, sheet_name="02_model_assumptions", index=False)
         frames.get("calibration_scenario_definitions", pd.DataFrame()).to_excel(writer, sheet_name="03_scenario_definitions", index=False)
